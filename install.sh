@@ -25,14 +25,14 @@ if [ ! -d "$SKILLS_REPO_DIR" ]; then
   echo "Cloning from GitHub..."
 
   # Check if GitHub URL is set
-  if ! git ls-remote https://github.com/yourusername/claude-agent-skills.git &>/dev/null; then
+  if ! git ls-remote https://github.com/gonzric1/claude-agent-skills.git &>/dev/null; then
     echo -e "${RED}Error: Repository not found on GitHub${NC}"
     echo "Please update the GitHub URL in this script or clone manually:"
     echo "  git clone YOUR_REPO_URL $SKILLS_REPO_DIR"
     exit 1
   fi
 
-  git clone https://github.com/yourusername/claude-agent-skills.git "$SKILLS_REPO_DIR"
+  git clone https://github.com/gonzric1/claude-agent-skills.git "$SKILLS_REPO_DIR"
   echo -e "${GREEN}✓ Skills repository cloned${NC}"
 else
   echo -e "${GREEN}✓ Skills repository found at $SKILLS_REPO_DIR${NC}"

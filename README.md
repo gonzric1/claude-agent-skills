@@ -63,13 +63,13 @@ This method creates a symbolic link from your project to this global skills repo
 **Automatic Setup:**
 ```bash
 # Download and run the setup script
-curl -fsSL https://raw.githubusercontent.com/yourusername/claude-agent-skills/main/install.sh | bash -s /path/to/your-project
+curl -fsSL https://raw.githubusercontent.com/gonzric1/claude-agent-skills/main/install.sh | bash -s /path/to/your-project
 ```
 
 **Manual Setup:**
 ```bash
 # First time: Clone this repo
-git clone https://github.com/yourusername/claude-agent-skills.git ~/repos/claude-agent-skills
+git clone https://github.com/gonzric1/claude-agent-skills.git ~/repos/claude-agent-skills
 
 # In each project:
 cd /path/to/your-project
@@ -91,7 +91,7 @@ Use this if you want different projects to use different versions of the skills.
 
 ```bash
 cd /path/to/your-project
-git submodule add https://github.com/yourusername/claude-agent-skills.git .agent/skills
+git submodule add https://github.com/gonzric1/claude-agent-skills.git .agent/skills
 git commit -m "Add agent skills as submodule"
 
 # On new machines:
