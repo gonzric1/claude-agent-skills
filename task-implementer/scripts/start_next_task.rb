@@ -3,9 +3,9 @@ require 'fileutils'
 require 'date'
 require 'yaml'
 
-# Define paths
-SKILLS_DIR = File.expand_path('../..', __dir__) # .agent/skills
-AGENT_DIR = File.dirname(SKILLS_DIR)            # .agent
+# Define paths relative to current working directory (project root)
+# This allows the script to work from any location (global skills repo or local)
+AGENT_DIR = File.join(Dir.pwd, '.agent')
 TASKS_DIR = File.join(AGENT_DIR, 'tasks')
 TODO_DIR = File.join(TASKS_DIR, 'to-do')
 IN_PROGRESS_DIR = File.join(TASKS_DIR, 'in-progress')

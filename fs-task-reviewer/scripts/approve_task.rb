@@ -1,9 +1,8 @@
 #!/usr/bin/env ruby
 require 'fileutils'
 
-# Define paths
-SKILLS_DIR = File.expand_path('../..', __dir__) # .agent/skills
-AGENT_DIR = File.dirname(SKILLS_DIR)            # .agent
+# Define paths relative to current working directory (project root)
+AGENT_DIR = File.join(Dir.pwd, '.agent')
 TASKS_DIR = File.join(AGENT_DIR, 'tasks')
 READY_FOR_REVIEW_DIR = File.join(TASKS_DIR, 'ready-for-review')
 COMPLETED_DIR = File.join(TASKS_DIR, 'completed')
