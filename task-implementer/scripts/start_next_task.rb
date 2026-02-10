@@ -75,18 +75,22 @@ tasks = all_tasks.reject do |task|
 end
 
 if tasks.empty?
-  puts "No tasks ready to work on!"
+  puts "=" * 60
+  puts "NO TASKS AVAILABLE FOR YOU TO WORK ON"
+  puts "=" * 60
   puts ""
 
-  # Check for in-progress tasks
+  # Check for in-progress tasks (being worked on by OTHER agents)
   in_progress_output = run_bd("list --status in_progress --json")
   in_progress = parse_json(in_progress_output)
 
   if in_progress.any?
-    puts "Current in-progress tasks:"
+    puts "Tasks being worked on by OTHER agents (DO NOT TOUCH):"
     in_progress.each do |task|
-      puts "  - #{task['id']}: #{task['title']}"
+      assignee = task['assignee'] || 'unknown'
+      puts "  - #{task['id']}: #{task['title']} (assigned to: #{assignee})"
     end
+    puts ""
   end
 
   # Check for blocked tasks
@@ -94,16 +98,21 @@ if tasks.empty?
   blocked = parse_json(blocked_output)
 
   if blocked.any?
-    puts "\nBlocked tasks (waiting for dependencies):"
+    puts "Blocked tasks (waiting for dependencies):"
     blocked.each do |task|
       blockers = task['blocked_by']&.join(', ') || 'unknown'
       puts "  - #{task['id']}: #{task['title']}"
       puts "    Blocked by: #{blockers}"
     end
+    puts ""
   end
 
+  puts "=" * 60
+  puts "ACTION REQUIRED: Run /fs-task-reviewer skill to review"
+  puts "tasks labeled 'ready-for-review' instead."
   puts ""
-  puts "INSTRUCTION: No implementation work available. Switch to /fs-task-reviewer to review tasks with ready-for-review label."
+  puts "DO NOT work on in_progress tasks - they belong to other agents."
+  puts "=" * 60
   exit 0
 end
 
