@@ -61,10 +61,18 @@ PRIORITY_LABELS = {
   4 => 'P4 (NIT)'
 }.freeze
 
-# Get ready tasks (unblocked, not in_progress)
+# Get ready tasks (unblocked, unassigned, not in_progress)
+# --unassigned ensures we don't pick up tasks already claimed by other agents
 # bd ready --json returns tasks sorted by priority
-output = run_bd("ready --json")
-tasks = parse_json(output)
+output = run_bd("ready --unassigned --json")
+all_tasks = parse_json(output)
+
+# Filter out tasks that are already marked ready-for-review
+# These should be picked up by the task-reviewer skill instead
+tasks = all_tasks.reject do |task|
+  labels = task['labels'] || []
+  labels.include?('ready-for-review')
+end
 
 if tasks.empty?
   puts "No tasks ready to work on!"
@@ -95,7 +103,7 @@ if tasks.empty?
   end
 
   puts ""
-  puts "INSTRUCTION: Report this to the user and STOP."
+  puts "INSTRUCTION: No implementation work available. Switch to /fs-task-reviewer to review tasks with ready-for-review label."
   exit 0
 end
 
@@ -122,7 +130,7 @@ end
 if claimed_task.nil?
   puts "\nAll #{tasks.length} ready tasks were claimed by other agents!"
   puts ""
-  puts "INSTRUCTION: Report this to the user and STOP."
+  puts "INSTRUCTION: No implementation work available. Switch to /fs-task-reviewer to review tasks with ready-for-review label."
   exit 0
 end
 
