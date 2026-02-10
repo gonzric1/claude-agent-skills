@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+require 'fileutils'
+require 'date'
+
+# Define paths
+SKILLS_DIR = File.expand_path('../..', __dir__) # .agent/skills
+AGENT_DIR = File.dirname(SKILLS_DIR)            # .agent
+TASKS_DIR = File.join(AGENT_DIR, 'tasks')
+TODO_DIR = File.join(TASKS_DIR, 'to-do')
+IN_PROGRESS_DIR = File.join(TASKS_DIR, 'in-progress')
+
+# Ensure directories exist
+FileUtils.mkdir_p(IN_PROGRESS_DIR)
+
+# Get all markdown files
+files = Dir.glob(File.join(TODO_DIR, '*.md'))
+
+if files.empty?
+  puts "No tasks found in #{TODO_DIR}"
+  exit 0
+end
+
+# Priority mapping for filename-based priorities
+PRIORITY_MAP = {
+  'CRITICAL' => 10,
+  'MAJOR'    => 7,
+  'MODERATE' => 4,
+  'TICKET'   => 2,
+  'NIT'      => 1
+}
+
+# Helper to parse priority
+def get_priority(file_path)
+  filename = File.basename(file_path, '.md') # Remove extension
+  
+  # Check filename first
+  # Expecting: CRITICAL-YYYY-MM-DD-title
+  if match = filename.match(/^(CRITICAL|MAJOR|MODERATE|TICKET|NIT)-/i)
+    return PRIORITY_MAP[match[1].upcase]
+  end
+
+  # Fallback to content
+  content = File.read(file_path)
+  match = content.match(/\*\*Priority\*\*:\s*(\d+)(\/10)?/i)
+  match ? match[1].to_i : 0
+end
+
+# Helper to parse date from filename
+def get_date(file_path)
+  filename = File.basename(file_path)
+  # Look for distinct date pattern anywhere in string to handle both:
+  # YYYY-MM-DD-title.md
+  # CRITICAL-YYYY-MM-DD-title.md
+  match = filename.match(/(\d{4}-\d{2}-\d{2})/)
+  match ? Date.parse(match[1]) : Date.today + 365 # Default to far future so dated tasks come first
+end
+
+# Sort files
+sorted_files = files.sort_by do |file|
+  priority = get_priority(file)
+  date = get_date(file)
+  # Sort by Priority DESC (-priority), then Date ASC (date)
+  # Higher priority happens first. Older date happens first.
+  [-priority, date] 
+end
+
+next_task = sorted_files.first
+filename = File.basename(next_task)
+destination = File.join(IN_PROGRESS_DIR, filename)
+
+priority = get_priority(next_task)
+date = get_date(next_task)
+
+puts "Strategy: Priority High->Low (CRITICAL=10, MAJOR=7, etc), then Date Oldest->Newest"
+puts "Running task: #{filename}"
+puts "  - Detected Priority: #{priority}"
+puts "  - Detected Date:     #{date}"
+
+FileUtils.mv(next_task, destination)
+
+puts "\n--- Task Content ---\n"
+puts File.read(destination)
+puts "\n--------------------"

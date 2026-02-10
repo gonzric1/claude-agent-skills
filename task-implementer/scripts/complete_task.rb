@@ -1,47 +1,81 @@
 #!/usr/bin/env ruby
-require 'fileutils'
+# frozen_string_literal: true
 
-# Define paths relative to current working directory (project root)
-AGENT_DIR = File.join(Dir.pwd, '.agent')
-TASKS_DIR = File.join(AGENT_DIR, 'tasks')
-IN_PROGRESS_DIR = File.join(TASKS_DIR, 'in-progress')
-READY_FOR_REVIEW_DIR = File.join(TASKS_DIR, 'ready-for-review')
+require 'json'
+require 'open3'
 
-FileUtils.mkdir_p(READY_FOR_REVIEW_DIR)
+# Helper to run bd commands and parse JSON output
+def run_bd(args, allow_failure: false)
+  cmd = "bd #{args}"
+  stdout, stderr, status = Open3.capture3(cmd)
 
-# Check args
-target_file = ARGV[0]
+  unless status.success? || allow_failure
+    if stderr.include?("No beads repository found")
+      puts "Error: beads not initialized in this project."
+      puts "Run 'bd init' to initialize beads tracking."
+      exit 1
+    end
+    $stderr.puts "Error running '#{cmd}': #{stderr}"
+    exit 1
+  end
 
-if target_file.nil?
-  files = Dir.glob(File.join(IN_PROGRESS_DIR, '*.md'))
-  if files.empty?
-    puts "No tasks in progress."
-    exit 0
-  elsif files.length == 1
-    target_file = File.basename(files.first)
+  stdout
+end
+
+# Helper to parse JSON from bd output
+def parse_json(output)
+  return [] if output.strip.empty?
+  JSON.parse(output)
+rescue JSON::ParserError => e
+  $stderr.puts "Failed to parse JSON: #{e.message}"
+  $stderr.puts "Output was: #{output}"
+  exit 1
+end
+
+# Check for task ID argument
+target_id = ARGV[0]
+
+# Find in-progress tasks
+output = run_bd("list --status in_progress --json")
+in_progress = parse_json(output)
+
+if in_progress.empty?
+  puts "No tasks currently in progress."
+  exit 0
+end
+
+if target_id.nil?
+  if in_progress.length == 1
+    target_id = in_progress.first['id']
   else
-    puts "Multiple tasks in progress. Please specify filename:"
-    files.each { |f| puts "- #{File.basename(f)}" }
+    puts "Multiple tasks in progress. Please specify task ID:"
+    in_progress.each do |task|
+      puts "  - #{task['id']}: #{task['title']}"
+    end
     exit 1
   end
 end
 
-source_path = File.join(IN_PROGRESS_DIR, target_file)
+# Verify task exists and is in progress
+task = in_progress.find { |t| t['id'] == target_id }
 
-# Try exact match first, then checks if user just passed filename without extension or relative path
-unless File.exist?(source_path)
-  # Check if user passed full path
-  if File.exist?(target_file)
-    source_path = target_file
-    target_file = File.basename(target_file)
+unless task
+  puts "Task #{target_id} is not in progress."
+  puts "\nCurrent in-progress tasks:"
+  in_progress.each do |t|
+    puts "  - #{t['id']}: #{t['title']}"
   end
-end
-
-if File.exist?(source_path)
-  dest_path = File.join(READY_FOR_REVIEW_DIR, target_file)
-  FileUtils.mv(source_path, dest_path)
-  puts "Moved #{target_file} to ready-for-review."
-else
-  puts "File not found: #{source_path}"
   exit 1
 end
+
+# Mark task as ready for review by:
+# 1. Setting status back to open (so it shows in lists)
+# 2. Adding ready-for-review label
+run_bd("update #{target_id} --status open --add-label ready-for-review")
+
+puts "Marked #{target_id} as ready for review."
+puts "  - Title: #{task['title']}"
+puts "  - Status: open"
+puts "  - Added label: ready-for-review"
+puts ""
+puts "The task will be picked up by fs-task-reviewer for code review."

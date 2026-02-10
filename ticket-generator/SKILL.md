@@ -1,40 +1,133 @@
 ---
 name: ticket-generator
-description: Generate standardized task tickets based on a template. Helps organize work into clear, actionable units.
+description: Generate standardized task tickets using beads issue tracking.
 ---
 
 # Ticket Generator
 
-You are a **Task Manager**. Your goal is to convert loose requirements or findings into structured, actionable tickets that any developer (or agent) can pick up and execute.
+You are a **Task Manager**. Your goal is to convert loose requirements or findings into structured, actionable tickets using the beads issue tracker (`bd` CLI).
+
+## Prerequisites
+
+Ensure beads is initialized in your project:
+```bash
+bd init
+```
 
 ## Capabilities
 
-1.  **Generate Ticket**: Use the `ticket-template.md` to create a new task file.
+1. **Generate Ticket**: Create structured issues with priority, labels, and dependencies
 
 ## Workflow
 
-1.  **Understand the Goal**: Briefly analyze what needs to be done.
-2.  **Draft the Ticket**:
-    *   Read `[[ @assets/ticket-template.md ]]`.
-    *   Fill in the `[Placeholders]` with specific details.
-    *   **Priority**: Assess based on urgency and impact (1-10).
-    *   **Context**: accurately identify affected files and relevant context docs.
-3.  **Save**:
-    *   Save the file to `.agent/tasks/to-do/TICKET-##-YYYY-MM-DD-title.md` where ## is a zero-padded 2-digit order number (01, 02, 03, etc.)
-    *   **Order Number Guidelines**:
-        - Tickets with dependencies should have sequential numbers (01, 02, 03)
-        - Tickets that can run in parallel should share the same number (e.g., multiple tickets numbered 05)
-        - Lower numbers must complete before higher numbers can start
-    *   Example: `TICKET-01-2026-02-05-create-migration.md`, `TICKET-02-2026-02-05-create-model.md`
-    *   If `.agent/tasks/` does not exist, save to the current directory or ask the user.
+1. **Understand the Goal**: Briefly analyze what needs to be done.
+2. **Draft the Ticket**:
+   * **Title**: Clear, actionable (e.g., "Add user authentication", "Fix pagination edge case")
+   * **Priority**: Assess based on urgency and impact (P0-P4)
+   * **Labels**: Add relevant labels for categorization
+   * **Description**: Detailed context and requirements
+   * **Acceptance Criteria**: Specific, testable conditions for completion
+3. **Create the Issue**:
+
+```bash
+bd create "Clear Actionable Title" \
+  --priority <0-4> \
+  --labels "<label1>,<label2>" \
+  --description "$(cat <<'EOF'
+## Context & Problem
+[Describe the issue or feature request]
+
+## Requirements
+1. [Specific requirement]
+2. [Another requirement]
+
+## Files Affected
+- path/to/file.rb
+- path/to/file.ts
+
+## Testing
+- [ ] Update or add tests to cover the changes
+- [ ] Verify no regression
+EOF
+)" \
+  --acceptance "$(cat <<'EOF'
+- [ ] Requirement 1 is met
+- [ ] Tests pass
+- [ ] Documentation updated
+EOF
+)"
+```
+
+4. **Set Dependencies** (if applicable):
+```bash
+# Make ticket-B wait for ticket-A to complete
+bd dep add <ticket-B-id> <ticket-A-id>
+```
+
+## Priority Levels
+
+| Priority | Prefix | Use Case |
+|----------|--------|----------|
+| P0 | `critical` | Security, data loss, system down |
+| P1 | `major` | Core functionality broken, no workaround |
+| P2 | `moderate` | Significant issue with workaround |
+| P3 | `ticket` | Standard feature work, improvements |
+| P4 | `nit` | Style, naming, minor refactors |
+
+## Labels
+
+### Priority Labels
+- `critical` - P0 issues
+- `major` - P1 issues
+- `moderate` - P2 issues
+- `ticket` - P3 issues
+- `nit` - P4 issues
+
+### Workflow Labels
+- `ready-for-review` - Awaiting code review
+- `review-passed` - Approved
+- `review-failed` - Needs rework
+- `review-finding` - Created from code review
+- `blocks-approval` - Blocks review completion
+
+## Dependency Guidelines
+
+When creating multiple related tickets:
+
+1. **Database migrations** should be P0 dependencies (created first)
+2. **Models** depend on migrations
+3. **Services** depend on models
+4. **Controllers/frontend** can often be parallel (same priority, no deps)
+5. **Backfill/data tasks** should depend on all schema changes
+
+Example dependency chain:
+```bash
+# Create tickets
+bd create "Create users migration" --priority 2 --labels ticket
+# Returns: Created PROJ-1
+
+bd create "Add User model" --priority 2 --labels ticket
+# Returns: Created PROJ-2
+
+bd create "Add UserService" --priority 2 --labels ticket
+# Returns: Created PROJ-3
+
+# Set dependencies
+bd dep add PROJ-2 PROJ-1  # User model waits for migration
+bd dep add PROJ-3 PROJ-2  # UserService waits for User model
+```
+
+## Quick Capture
+
+For rapid issue creation without full details:
+```bash
+bd q "Quick description of the task"
+```
+
+This creates a P3 ticket with minimal metadata - good for capturing ideas quickly.
 
 ## Rules
 
-*   **Clarity**: The title must be an action (e.g., "Fix Etsy Sync", "Refactor User Model").
-*   **Completeness**: Do not leave placeholders empty. If unknown, state "To be determined".
-*   **Order Numbers**: Assign order numbers based on dependencies:
-    - Database migrations should typically be 01, 02
-    - Models depending on migrations should be 03, 04
-    - Services using models should be 05, 06
-    - Controllers/frontend can often run in parallel (same number)
-    - Backfill/data tasks should be last
+* **Clarity**: The title must be an action (e.g., "Fix Etsy Sync", "Refactor User Model")
+* **Completeness**: Provide enough context for any developer to understand and execute
+* **Dependencies**: Use `bd dep add` to express ordering constraints instead of order numbers

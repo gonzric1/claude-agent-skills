@@ -1,30 +1,61 @@
 #!/usr/bin/env ruby
-require 'fileutils'
+# frozen_string_literal: true
 
-# Define paths relative to current working directory (project root)
-AGENT_DIR = File.join(Dir.pwd, '.agent')
-TASKS_DIR = File.join(AGENT_DIR, 'tasks')
-READY_FOR_REVIEW_DIR = File.join(TASKS_DIR, 'ready-for-review')
+# Get tasks marked as ready-for-review
 
-# Get all markdown files in ready-for-review
-files = Dir.glob(File.join(READY_FOR_REVIEW_DIR, '*.md'))
+require 'json'
+require 'open3'
 
-if files.empty?
+# Helper to run bd commands
+def run_bd(args)
+  cmd = "bd #{args}"
+  stdout, stderr, status = Open3.capture3(cmd)
+
+  unless status.success?
+    if stderr.include?("No beads repository found")
+      puts "Error: beads not initialized in this project."
+      puts "Run 'bd init' to initialize beads tracking."
+      exit 1
+    end
+    $stderr.puts "Error running '#{cmd}': #{stderr}"
+    exit 1
+  end
+
+  stdout
+end
+
+# Helper to parse JSON from bd output
+def parse_json(output)
+  return [] if output.strip.empty?
+  JSON.parse(output)
+rescue JSON::ParserError => e
+  $stderr.puts "Failed to parse JSON: #{e.message}"
+  []
+end
+
+# Find tasks with ready-for-review label
+output = run_bd("list --status open --label ready-for-review --json")
+tasks = parse_json(output)
+
+if tasks.empty?
   puts "No tasks ready for review."
   exit 0
 end
 
-# Sort by modification time (oldest first)
-files.sort_by! { |f| File.mtime(f) }
+# Sort by priority (lower = higher priority)
+tasks.sort_by! { |t| t['priority'] || 3 }
 
 puts "Tasks ready for review:"
-files.each_with_index do |file, idx|
-  filename = File.basename(file)
-  mtime = File.mtime(file).strftime('%Y-%m-%d %H:%M')
-  puts "  #{idx + 1}. #{filename} (moved #{mtime})"
+tasks.each_with_index do |task, idx|
+  priority = task['priority'] || 3
+  puts "  #{idx + 1}. #{task['id']}: #{task['title']} (P#{priority})"
 end
 
-puts "\nReviewing first task: #{File.basename(files.first)}"
+# Review the first (highest priority) task
+first_task = tasks.first
+task_id = first_task['id']
+
+puts "\nReviewing first task: #{task_id}"
 puts "\n--- Task Content ---"
-puts File.read(files.first)
+puts run_bd("show #{task_id}")
 puts "--------------------"

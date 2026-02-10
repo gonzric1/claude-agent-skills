@@ -1,172 +1,156 @@
 #!/usr/bin/env ruby
-require 'fileutils'
-require 'date'
-require 'yaml'
+# frozen_string_literal: true
 
-# Define paths relative to current working directory (project root)
-# This allows the script to work from any location (global skills repo or local)
-AGENT_DIR = File.join(Dir.pwd, '.agent')
-TASKS_DIR = File.join(AGENT_DIR, 'tasks')
-TODO_DIR = File.join(TASKS_DIR, 'to-do')
-IN_PROGRESS_DIR = File.join(TASKS_DIR, 'in-progress')
+require 'json'
+require 'open3'
 
-# Ensure directories exist
-FileUtils.mkdir_p(IN_PROGRESS_DIR)
+# Helper to run bd commands and parse JSON output
+def run_bd(args)
+  cmd = "bd #{args}"
+  stdout, stderr, status = Open3.capture3(cmd)
 
-# Get all markdown files
-files = Dir.glob(File.join(TODO_DIR, '*.md'))
-
-if files.empty?
-  puts "No tasks found in #{TODO_DIR}"
-  exit 0
-end
-
-# Priority mapping for filename-based priorities
-PRIORITY_MAP = {
-  'CRITICAL' => 10,
-  'MAJOR'    => 7,
-  'MODERATE' => 4,
-  'TICKET'   => 2,
-  'NIT'      => 1
-}
-
-# Helper to parse priority
-def get_priority(file_path)
-  filename = File.basename(file_path, '.md') # Remove extension
-  
-  # Check filename first
-  # Expecting: CRITICAL-YYYY-MM-DD-title
-  if match = filename.match(/^(CRITICAL|MAJOR|MODERATE|TICKET|NIT)-/i)
-    return PRIORITY_MAP[match[1].upcase]
-  end
-
-  # Fallback to content
-  content = File.read(file_path)
-  match = content.match(/\*\*Priority\*\*:\s*(\d+)(\/10)?/i)
-  match ? match[1].to_i : 0
-end
-
-# Helper to parse date from filename
-def get_date(file_path)
-  filename = File.basename(file_path)
-  # Look for distinct date pattern anywhere in string to handle both:
-  # YYYY-MM-DD-title.md
-  # CRITICAL-YYYY-MM-DD-title.md
-  match = filename.match(/(\d{4}-\d{2}-\d{2})/)
-  match ? Date.parse(match[1]) : Date.today + 365 # Default to far future so dated tasks come first
-end
-
-# Helper to parse order number from TICKET filename
-# Returns nil if not a TICKET or no order number
-def get_order_number(file_path)
-  filename = File.basename(file_path)
-  # Match TICKET-##-YYYY-MM-DD-title.md format
-  match = filename.match(/^TICKET-(\d{2})-/)
-  match ? match[1].to_i : nil
-end
-
-# Parse dependencies from ticket YAML frontmatter
-# Returns array of ticket IDs (e.g., ["TICKET-01", "TICKET-02"]) or empty array
-def get_dependencies(file_path)
-  return [] unless File.exist?(file_path)
-
-  begin
-    content = File.read(file_path)
-
-    # Extract YAML frontmatter (between --- markers)
-    if content =~ /\A---\s*\n(.*?)\n---\s*\n/m
-      frontmatter = YAML.safe_load($1)
-
-      # Get depends_on field (can be array or nil)
-      deps = frontmatter['depends_on'] || []
-      return Array(deps) # Ensure it's always an array
+  unless status.success?
+    if stderr.include?("No beads repository found")
+      puts "Error: beads not initialized in this project."
+      puts "Run 'bd init' to initialize beads tracking."
+      exit 1
     end
-  rescue StandardError => e
-    # If YAML parsing fails, return empty array (fail safe)
-    puts "Warning: Could not parse YAML frontmatter for #{File.basename(file_path)}: #{e.message}"
+    $stderr.puts "Error running '#{cmd}': #{stderr}"
+    exit 1
   end
 
-  []
+  stdout
 end
 
-# Check if a task has unmet dependencies
-# Returns true if any dependency is still in to-do or in-progress
-def has_unmet_dependencies?(file_path)
-  dependencies = get_dependencies(file_path)
-  return false if dependencies.empty?
+# Attempt to atomically claim a task.
+# Returns true if successful, false if already claimed by another agent.
+# Exits on other errors.
+def try_claim(task_id)
+  cmd = "bd update #{task_id} --claim"
+  stdout, stderr, status = Open3.capture3(cmd)
 
-  # Get all incomplete ticket IDs (in to-do or in-progress)
-  incomplete_tickets = []
+  # Check for "already claimed" error in stderr (bd returns exit 0 even on this error)
+  if stderr.include?("already claimed")
+    return false
+  end
 
-  [TODO_DIR, IN_PROGRESS_DIR].each do |dir|
-    Dir.glob(File.join(dir, 'TICKET-*.md')).each do |ticket_file|
-      filename = File.basename(ticket_file, '.md')
-      # Extract TICKET-## from filename
-      if match = filename.match(/^(TICKET-\d{2})/)
-        incomplete_tickets << match[1]
-      end
+  # Check for other errors
+  if stderr =~ /Error|error/ && !stderr.strip.empty?
+    $stderr.puts "Error claiming #{task_id}: #{stderr}"
+    return false
+  end
+
+  true
+end
+
+# Helper to parse JSON from bd output
+def parse_json(output)
+  JSON.parse(output)
+rescue JSON::ParserError => e
+  $stderr.puts "Failed to parse JSON: #{e.message}"
+  $stderr.puts "Output was: #{output}"
+  exit 1
+end
+
+# Priority label to display name mapping
+PRIORITY_LABELS = {
+  0 => 'P0 (CRITICAL)',
+  1 => 'P1 (MAJOR)',
+  2 => 'P2 (MODERATE)',
+  3 => 'P3 (TICKET)',
+  4 => 'P4 (NIT)'
+}.freeze
+
+# Get ready tasks (unblocked, not in_progress)
+# bd ready --json returns tasks sorted by priority
+output = run_bd("ready --json")
+tasks = parse_json(output)
+
+if tasks.empty?
+  puts "No tasks ready to work on!"
+  puts ""
+
+  # Check for in-progress tasks
+  in_progress_output = run_bd("list --status in_progress --json")
+  in_progress = parse_json(in_progress_output)
+
+  if in_progress.any?
+    puts "Current in-progress tasks:"
+    in_progress.each do |task|
+      puts "  - #{task['id']}: #{task['title']}"
     end
   end
 
-  # Check if any dependency is incomplete
-  dependencies.any? { |dep| incomplete_tickets.include?(dep) }
-end
+  # Check for blocked tasks
+  blocked_output = run_bd("blocked --json")
+  blocked = parse_json(blocked_output)
 
-# Sort files
-sorted_files = files.sort_by do |file|
-  priority = get_priority(file)
-  date = get_date(file)
-  order_num = get_order_number(file) || 999 # Non-TICKETs get high order for sorting
-
-  # Sort by:
-  # 1. Order number (for TICKETs) - lower numbers first
-  # 2. Priority DESC (-priority)
-  # 3. Date ASC (date)
-  [order_num, -priority, date]
-end
-
-# Filter out tasks with unmet dependencies
-available_files = sorted_files.reject { |file| has_unmet_dependencies?(file) }
-
-if available_files.empty?
-  puts "No tasks available to run!"
-  puts "All tasks have unmet dependencies (waiting for lower-numbered TICKETs to complete)."
-  puts "\nIn-progress tasks:"
-  Dir.glob(File.join(IN_PROGRESS_DIR, '*.md')).each do |file|
-    puts "  - #{File.basename(file)}"
+  if blocked.any?
+    puts "\nBlocked tasks (waiting for dependencies):"
+    blocked.each do |task|
+      blockers = task['blocked_by']&.join(', ') || 'unknown'
+      puts "  - #{task['id']}: #{task['title']}"
+      puts "    Blocked by: #{blockers}"
+    end
   end
+
+  puts ""
+  puts "INSTRUCTION: Report this to the user and STOP."
   exit 0
 end
 
-next_task = available_files.first
-filename = File.basename(next_task)
-destination = File.join(IN_PROGRESS_DIR, filename)
+puts "Strategy: Priority (P0 > P1 > P2 > P3 > P4), then unblocked tasks first"
+puts ""
 
-priority = get_priority(next_task)
-date = get_date(next_task)
-order_num = get_order_number(next_task)
-dependencies = get_dependencies(next_task)
+# Try to claim tasks in priority order until one succeeds
+claimed_task = nil
+skipped_tasks = []
 
-puts "Strategy: Order # (TICKETs), then Priority High->Low (CRITICAL=10, MAJOR=7, etc), then Date Oldest->Newest"
-puts "Running task: #{filename}"
-puts "  - Detected Order:    #{order_num || 'N/A'}"
-puts "  - Detected Priority: #{priority}"
-puts "  - Detected Date:     #{date}"
-puts "  - Dependencies:      #{dependencies.empty? ? 'None' : dependencies.join(', ')}"
+tasks.each do |task|
+  task_id = task['id']
 
-# Show skipped tasks if any
-skipped = sorted_files - available_files
-if !skipped.empty?
-  puts "\nSkipped tasks (unmet dependencies):"
-  skipped.each do |file|
-    deps = get_dependencies(file)
-    puts "  - #{File.basename(file)}"
-    puts "    Waiting for: #{deps.join(', ')}" unless deps.empty?
+  if try_claim(task_id)
+    claimed_task = task
+    break
+  else
+    # Task was already claimed by another agent, try the next one
+    skipped_tasks << task
+    puts "Task #{task_id} already claimed, trying next..."
   end
 end
 
-FileUtils.mv(next_task, destination)
+if claimed_task.nil?
+  puts "\nAll #{tasks.length} ready tasks were claimed by other agents!"
+  puts ""
+  puts "INSTRUCTION: Report this to the user and STOP."
+  exit 0
+end
 
+task_id = claimed_task['id']
+priority = claimed_task['priority'] || 3
+priority_label = PRIORITY_LABELS[priority] || "P#{priority}"
+labels = claimed_task['labels']&.join(', ') || 'none'
+blocked_by = claimed_task['blocked_by']&.join(', ') || 'None'
+
+puts "Claimed task: #{task_id}"
+puts "  - Title:       #{claimed_task['title']}"
+puts "  - Priority:    #{priority_label}"
+puts "  - Labels:      #{labels}"
+puts "  - Dependencies: #{blocked_by}"
+
+# Show other ready tasks (not yet claimed)
+remaining_tasks = tasks - skipped_tasks - [claimed_task]
+if remaining_tasks.any?
+  puts "\nOther ready tasks:"
+  remaining_tasks[0..4].each do |task|
+    p = task['priority'] || 3
+    puts "  - #{task['id']}: #{task['title']} (P#{p})"
+  end
+  puts "  ... and #{remaining_tasks.length - 5} more" if remaining_tasks.length > 5
+end
+
+# Get full task details
 puts "\n--- Task Content ---\n"
-puts File.read(destination)
+task_output = run_bd("show #{task_id}")
+puts task_output
 puts "\n--------------------"

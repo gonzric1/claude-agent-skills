@@ -1,33 +1,79 @@
----
-priority: [Score]
-status: ready
-depends_on:
-  - TICKET-##
-  - TICKET-##
-# Or use empty array for no dependencies: []
----
+# Beads Ticket Template
 
-# **Task: [Clear Actionable Title]**
+This template shows how to create tickets using the beads CLI.
 
-## **Context & Grounding**
+## Basic Creation
 
-* **Problem**: [Describe the issue or feature request]
-* **Relevant Docs**: [Reference .agent/context/file.md]
-* **Files Affected**:
-  * [path/to/file.rb]
-  * [path/to/file.ts]
+```bash
+bd create "Clear Actionable Title" \
+  --priority 2 \
+  --labels "ticket" \
+  --description "Description of the task" \
+  --acceptance "Acceptance criteria"
+```
 
-## **Requirements**
+## Full Example
 
-1. **Description**: [Detailed description of what needs to be done]
-2. **Documentation**:
-   * [ ] Updated internal documentation if necessary.
-   * [ ] Add YARD tags for Ruby methods / TSDoc for TS.
-3. **Testing**:
-   * [ ] Update or add tests to cover the changes.
-   * [ ] Verify no regression.
+```bash
+bd create "Add user authentication endpoint" \
+  --priority 2 \
+  --labels "ticket,backend,auth" \
+  --description "$(cat <<'EOF'
+## Context & Problem
+The API currently has no authentication. Users need to be able to log in
+to access protected resources.
 
-## **Validation Commands**
+## Requirements
+1. Create POST /api/auth/login endpoint
+2. Accept email and password in request body
+3. Return JWT token on successful authentication
+4. Return 401 on invalid credentials
 
-# Run this to verify the work
-[command to run tests or linting]
+## Files Affected
+- app/controllers/auth_controller.rb
+- config/routes.rb
+- spec/requests/auth_spec.rb
+
+## Testing
+- [ ] Add request specs for login endpoint
+- [ ] Test successful login returns JWT
+- [ ] Test invalid credentials returns 401
+- [ ] Test missing fields returns 400
+EOF
+)" \
+  --acceptance "$(cat <<'EOF'
+- [ ] POST /api/auth/login accepts email/password
+- [ ] Returns JWT token on success
+- [ ] Returns 401 on invalid credentials
+- [ ] Request specs pass
+- [ ] YARD documentation added
+EOF
+)"
+```
+
+## Priority Reference
+
+| Priority | Label | Use Case |
+|----------|-------|----------|
+| 0 | critical | Security, data loss, critical bugs |
+| 1 | major | Core functionality broken |
+| 2 | moderate | Significant issue with workaround |
+| 3 | ticket | Standard feature work |
+| 4 | nit | Style, naming, minor refactors |
+
+## Setting Dependencies
+
+After creating tickets, set dependencies:
+
+```bash
+# PROJ-2 is blocked by PROJ-1 (PROJ-1 must complete first)
+bd dep add PROJ-2 PROJ-1
+```
+
+## Quick Capture
+
+For rapid issue creation:
+
+```bash
+bd q "Quick description of the task"
+```
