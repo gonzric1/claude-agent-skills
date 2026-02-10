@@ -151,6 +151,8 @@ blocked_by = claimed_task['blocked_by']&.join(', ') || 'None'
 if ENV['TMUX']
   pane_title = "WORKING ON: #{claimed_task['title'][0..50]}".gsub("'", "")
   system("tmux select-pane -T '#{pane_title}'")
+  # Disable automatic-rename to prevent tmux from overwriting our title
+  system("tmux set-option -p automatic-rename off")
 end
 
 puts "Started task: #{task_id}"

@@ -55,6 +55,14 @@ end
 first_task = tasks.first
 task_id = first_task['id']
 
+# Set tmux pane title to show task being reviewed
+if ENV['TMUX']
+  pane_title = "REVIEWING: #{first_task['title'][0..50]}".gsub("'", "")
+  system("tmux select-pane -T '#{pane_title}'")
+  # Disable automatic-rename to prevent tmux from overwriting our title
+  system("tmux set-option -p automatic-rename off")
+end
+
 puts "\nReviewing first task: #{task_id}"
 puts "\n--- Task Content ---"
 puts run_bd("show #{task_id}")
