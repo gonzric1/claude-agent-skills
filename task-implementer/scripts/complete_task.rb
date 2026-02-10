@@ -73,6 +73,10 @@ end
 # 2. Adding ready-for-review label
 run_bd("update #{target_id} --status open --add-label ready-for-review")
 
+# Sync immediately to commit and push the change before the daemon's
+# auto-pull can overwrite it with stale remote data (race condition fix)
+run_bd("sync", allow_failure: true)
+
 puts "Marked #{target_id} as ready for review."
 puts "  - Title: #{task['title']}"
 puts "  - Status: open"

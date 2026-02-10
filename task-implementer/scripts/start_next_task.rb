@@ -22,23 +22,21 @@ def run_bd(args)
   stdout
 end
 
-# Attempt to atomically claim a task.
-# Returns true if successful, false if already claimed by another agent.
-# Exits on other errors.
+# Attempt to start work on a task by setting status to in_progress.
+# Returns true if successful, false on error.
 def try_claim(task_id)
-  cmd = "bd update #{task_id} --claim"
+  cmd = "bd update #{task_id} --status in_progress"
   stdout, stderr, status = Open3.capture3(cmd)
 
-  # Check for "already claimed" error in stderr (bd returns exit 0 even on this error)
-  if stderr.include?("already claimed")
+  # Check for errors
+  unless status.success?
+    $stderr.puts "Error starting #{task_id}: #{stderr}"
     return false
   end
 
-  # Check for other errors
-  if stderr =~ /Error|error/ && !stderr.strip.empty?
-    $stderr.puts "Error claiming #{task_id}: #{stderr}"
-    return false
-  end
+  # Sync immediately to commit and push the change before the daemon's
+  # auto-pull can overwrite it with stale remote data (race condition fix)
+  Open3.capture3("bd sync")
 
   true
 end
@@ -61,10 +59,10 @@ PRIORITY_LABELS = {
   4 => 'P4 (NIT)'
 }.freeze
 
-# Get ready tasks (unblocked, unassigned, not in_progress)
-# --unassigned ensures we don't pick up tasks already claimed by other agents
+# Get ready tasks (unblocked, not in_progress)
+# bd ready already excludes in_progress, blocked, deferred, and hooked issues
 # bd ready --json returns tasks sorted by priority
-output = run_bd("ready --unassigned --json")
+output = run_bd("ready --json")
 all_tasks = parse_json(output)
 
 # Filter out tasks that are already marked ready-for-review
@@ -130,14 +128,14 @@ tasks.each do |task|
     claimed_task = task
     break
   else
-    # Task was already claimed by another agent, try the next one
+    # Failed to start task, try the next one
     skipped_tasks << task
-    puts "Task #{task_id} already claimed, trying next..."
+    puts "Failed to start #{task_id}, trying next..."
   end
 end
 
 if claimed_task.nil?
-  puts "\nAll #{tasks.length} ready tasks were claimed by other agents!"
+  puts "\nFailed to start any of the #{tasks.length} ready tasks!"
   puts ""
   puts "INSTRUCTION: No implementation work available. Switch to /fs-task-reviewer to review tasks with ready-for-review label."
   exit 0
@@ -149,7 +147,13 @@ priority_label = PRIORITY_LABELS[priority] || "P#{priority}"
 labels = claimed_task['labels']&.join(', ') || 'none'
 blocked_by = claimed_task['blocked_by']&.join(', ') || 'None'
 
-puts "Claimed task: #{task_id}"
+# Set tmux pane title to show current task
+if ENV['TMUX']
+  pane_title = "WORKING ON: #{claimed_task['title'][0..50]}".gsub("'", "")
+  system("tmux select-pane -T '#{pane_title}'")
+end
+
+puts "Started task: #{task_id}"
 puts "  - Title:       #{claimed_task['title']}"
 puts "  - Priority:    #{priority_label}"
 puts "  - Labels:      #{labels}"
