@@ -61,28 +61,27 @@ The fs-task-reviewer operates in **two modes**:
 
 ## **Mode Selection**
 
-### **Step 0: Check for Existing Review**
+### **Step 0: Check Review Status**
 
-First, check if there's an existing review-summary that needs verification:
+First, check the current review status:
 
 ```bash
 ruby [[ @scripts/check_review_status.rb ]]
 ```
 
 **This script will:**
-- Search for issues with `review-summary` label
-- Check if child (blocking) tickets have been resolved (closed)
-- If all blocking issues resolved: Close review-summary and notify that code is ready
-- If blocking issues remain: Report remaining issues and exit
-- If no review-summary exists: Proceed to Full Review Mode
+- Show tasks with `ready-for-review` label that are unblocked (ready NOW)
+- Show tasks awaiting fixes (blocked by dependencies)
+- For blocked tasks, show what's blocking them and blocker status
+- Provide next steps based on current state
 
-**Important:** Always run this first! It prevents duplicate reviews and ensures you're verifying fixes rather than re-reviewing the same issues.
+**Important:** This gives you an overview of the review pipeline before proceeding.
 
 ---
 
 ## **Full Review Mode**
 
-If no review-summary exists, perform a comprehensive code review.
+If tasks are ready for review, perform a comprehensive code review.
 
 ### **1. Get Changes for Review**
 
@@ -203,21 +202,18 @@ Your final response should include:
 
 ## **Complete Workflow Example**
 
-### **Scenario 1: First Review (No Review-Summary Exists)**
+### **Scenario 1: First Review**
 
 ```bash
-# Step 1: Check for existing review
+# Step 1: Check review status
 $ ruby scripts/check_review_status.rb
-No review-summary found
-Action: Perform a full code review of uncommitted changes
+✅ Tasks Ready for Review (1)
+  • PROJ-abc: Feature X implementation
 
-# Step 2: Get changes to review
-$ ruby scripts/get_uncommitted_changes.rb
-Uncommitted Changes Summary
-Total files changed: 3
-  • Ruby: 1 files
-  • Tests: 1 files
-  • Docs: 1 files
+# Step 2: Get task for review
+$ ruby scripts/get_task_for_review.rb
+Reviewing: PROJ-abc
+[Task details displayed]
 
 # Step 3: Run static analysis
 $ bash scripts/review-suite.sh
@@ -226,69 +222,61 @@ $ bash scripts/review-suite.sh
 # Step 4: Perform manual review
 [Agent reviews code, finds issues]
 
-# Step 5: Create tickets
-$ bd create "Add test coverage for new feature" --priority 0 --labels "critical,blocks-approval,review-finding"
-Created PROJ-1
+# Step 5: Create normal tickets for issues found
+$ bd create "Add test coverage for new feature" --type task --priority 0
+Created PROJ-f1
 
-$ bd create "Add YARD documentation" --priority 1 --labels "major,review-finding"
-Created PROJ-2
+$ bd create "Add YARD documentation" --type documentation --priority 1
+Created PROJ-f2
 
-$ bd create "Improve error handling" --priority 2 --labels "moderate,review-finding"
-Created PROJ-3
+$ bd create "Improve error handling" --type bug --priority 2
+Created PROJ-f3
 
-# Step 6: Create review-summary and link children
-$ bd create "Code Review: Feature X" --priority 1 --labels "review-summary"
-Created PROJ-4
+# Step 6: Add blocking dependencies
+$ bd dep add PROJ-abc PROJ-f1
+$ bd dep add PROJ-abc PROJ-f2
+$ bd dep add PROJ-abc PROJ-f3
 
-$ bd update PROJ-1 --parent PROJ-4
-$ bd update PROJ-2 --parent PROJ-4
-$ bd update PROJ-3 --parent PROJ-4
+# Step 7: (Optional) Add parent relationships for context
+$ bd update PROJ-f1 --parent PROJ-abc
+$ bd update PROJ-f2 --parent PROJ-abc
+$ bd update PROJ-f3 --parent PROJ-abc
 
-# Result: 3 finding tickets + 1 review-summary in beads
+# Result: Original task keeps ready-for-review label but is blocked
+# Fix tickets appear in bd ready for implementation
 ```
 
-### **Scenario 2: Verification Review (Review-Summary Exists)**
+### **Scenario 2: Verification After Fixes**
 
 ```bash
-# Developer has fixed the issues, now verify
+# Check if fixes are complete
 
 $ ruby scripts/check_review_status.rb
-Found review-summary: PROJ-4
-   Title: Code Review: Feature X
+⏳ Tasks Awaiting Fixes (1)
+  • PROJ-abc: Feature X implementation
+    Blocked by:
+      ✅ PROJ-f1: Add test coverage (closed)
+      ❌ PROJ-f2: Add YARD documentation (open)
+      ✅ PROJ-f3: Improve error handling (closed)
 
-============================================================
-
-Tickets from review:
-  1. PROJ-1: Add test coverage for new feature (completed) [BLOCKING]
-  2. PROJ-2: Add YARD documentation (open)
-  3. PROJ-3: Improve error handling (completed)
-
-BLOCKING ISSUES REMAIN:
-   - PROJ-1
-
-Review NOT complete - address blocking issues first
+Next steps:
+  1. Work on blocking tickets (they appear in: bd ready)
+  2. Re-run this check after closing blockers
 ```
 
-After all blocking issues are resolved:
+After all fixes are complete:
 
 ```bash
 $ ruby scripts/check_review_status.rb
-Found review-summary: PROJ-4
-   Title: Code Review: Feature X
+✅ Tasks Ready for Review (1)
+  • PROJ-abc: Feature X implementation
 
-============================================================
+Next steps:
+  ruby .agent/skills/fs-task-reviewer/scripts/get_task_for_review.rb
 
-Tickets from review:
-  1. PROJ-1: Add test coverage for new feature (completed) [BLOCKING]
-  2. PROJ-2: Add YARD documentation (completed)
-  3. PROJ-3: Improve error handling (completed)
-
-All issues resolved!
-
-Closing review-summary...
-Closed: PROJ-4
-
-Code is ready for approval!
+# Review the fixes and approve
+$ ruby scripts/approve_task.rb PROJ-abc
+✓ Review passed! Closed PROJ-abc.
 ```
 
 ---
@@ -306,12 +294,10 @@ Code is ready for approval!
 ## **Label Conventions**
 
 ### Workflow Labels
-- `ready-for-review` - Task has been implemented and awaits code review (⚠️ NEVER add to `review-finding` issues)
+- `ready-for-review` - Task has been implemented and awaits code review (stays even when blocked)
 - `review-passed` - Approved and closed
-- `review-failed` - Needs rework
-- `review-finding` - Issue created from code review that needs implementation (should NOT have `ready-for-review`)
-- `review-summary` - Parent issue tracking review
-- `blocks-approval` - Must fix before approval
+
+**Note:** Review-generated tickets use normal issue types (bug, task, documentation) with blocking dependencies. No special review labels needed.
 
 ### Priority Labels
 - `critical` - P0 issues
