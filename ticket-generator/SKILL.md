@@ -21,13 +21,22 @@ bd init
 ## Workflow
 
 1. **Understand the Goal**: Briefly analyze what needs to be done.
-2. **Draft the Ticket**:
+2. **Search for Context** (if `.agent/context/` exists):
+   * Search `.agent/context/` for relevant documentation using Grep or Glob
+   * Look for related features, integrations, architecture patterns, or testing guidelines
+   * Read relevant files to understand:
+     - Existing patterns to follow
+     - Related features that might have dependencies
+     - Integration details (APIs, external services)
+     - Testing requirements specific to the feature area
+   * Incorporate this context into the ticket description
+3. **Draft the Ticket**:
    * **Title**: Clear, actionable (e.g., "Add user authentication", "Fix pagination edge case")
    * **Priority**: Assess based on urgency and impact (P0-P4)
    * **Labels**: Add relevant labels for categorization
-   * **Description**: Detailed context and requirements
+   * **Description**: Detailed context and requirements (include context from `.agent/context/` if found)
    * **Acceptance Criteria**: Specific, testable conditions for completion
-3. **Create the Issue**:
+4. **Create the Issue**:
 
 ```bash
 bd create "Clear Actionable Title" \
@@ -58,7 +67,7 @@ EOF
 )"
 ```
 
-4. **Set Dependencies** (if applicable):
+5. **Set Dependencies** (if applicable):
 ```bash
 # Make ticket-B wait for ticket-A to complete
 bd dep add <ticket-B-id> <ticket-A-id>
@@ -86,9 +95,7 @@ bd dep add <ticket-B-id> <ticket-A-id>
 ### Workflow Labels
 - `ready-for-review` - Awaiting code review
 - `review-passed` - Approved
-- `review-failed` - Needs rework
-- `review-finding` - Created from code review
-- `blocks-approval` - Blocks review completion
+
 
 ## Dependency Guidelines
 
