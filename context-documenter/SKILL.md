@@ -68,6 +68,32 @@ This ensures:
 - Links are valid
 - Structure is consistent
 
+### 6. Split Oversized Documentation
+Use `[[ @scripts/split_oversized_docs.rb ]]` to automatically split large documentation files:
+```bash
+# Dry run (preview changes without modifying files)
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb --dry-run
+
+# Split files over 250 lines (default threshold)
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb
+
+# Use custom threshold
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb --threshold=300
+```
+
+This script will:
+- Find documentation files longer than the threshold (default: 250 lines)
+- Analyze H2 sections to identify logical split points
+- Create focused sub-documents (e.g., "Orders - Models", "Orders - API Endpoints")
+- Generate a README.md index file with section summaries
+- Archive the original file as `*.md.old`
+
+**When to use:**
+- After a documentation file exceeds 250 lines
+- When multiple topics are mixed in a single file
+- To improve navigation and discoverability
+- As part of documentation maintenance
+
 ## Documentation Structure Guidelines
 
 ### File Naming
@@ -158,5 +184,37 @@ See `[[ @references/ ]]` for examples of well-documented features:
 - **Scripts**:
   - `analyze_feature.rb`: Analyzes codebase to suggest documentation structure
   - `validate_docs.rb`: Validates documentation for broken links and outdated references
+  - `split_oversized_docs.rb`: Automatically splits large documentation files into focused sub-documents
 - **Templates**: Located in `assets/` directory
 - **References**: Example documentation files in `references/` directory
+
+## Documentation Size Guidelines
+
+**Target Size**: Keep documentation files under **250 lines** for optimal readability.
+
+**Why Split Large Files?**
+- Easier to navigate and find specific information
+- Reduces cognitive load for future agents
+- Improves maintainability (focused updates)
+- Better version control (fewer merge conflicts)
+
+**Splitting Strategy:**
+The `split_oversized_docs.rb` script uses H2 headings (`## Section`) as natural split points:
+
+**Example: A 500-line "Orders" document might split into:**
+- `orders/README.md` - Overview and navigation index
+- `orders/core-models.md` - Database models and relationships
+- `orders/services.md` - Business logic and service objects
+- `orders/controllers-api-endpoints.md` - HTTP endpoints
+- `orders/frontend-components.md` - React components
+- `orders/testing.md` - Test files and coverage
+
+**Index File Naming:**
+Split documentation creates a directory with the original filename and uses `README.md` as the index:
+- Original: `.agent/context/features/orders.md`
+- Split result: `.agent/context/features/orders/README.md` (index) + sub-documents
+
+**When NOT to Split:**
+- Files under 250 lines
+- Single-topic documentation with poor section structure
+- Reference documentation (API specs, external docs)

@@ -1,96 +1,146 @@
-# Context Documenter Skill
+# Context Documenter Scripts
 
-A skill for creating and maintaining comprehensive documentation in the `.agent/context` folder.
+This directory contains scripts for managing the `.agent/context/` documentation.
 
-## Quick Start
+## Available Scripts
 
-### Analyze a Feature
+### 1. `split_oversized_docs.rb`
+
+Automatically splits large documentation files (>250 lines) into focused sub-documents.
+
+**Usage:**
 ```bash
-ruby .agent/skills/context-documenter/scripts/analyze_feature.rb etsy
+# Preview what would be split (no changes)
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb --dry-run
+
+# Split all oversized files
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb
+
+# Use custom threshold
+ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb --threshold=300
 ```
 
-This will scan the codebase and suggest:
-- Related models, services, controllers, components
-- Recommended documentation structure
-- Suggested filename
+**How it works:**
+1. Scans `.agent/context/**/*.md` for files exceeding the line threshold
+2. Identifies H2 headings (`## Section`) as logical split points
+3. Creates a subdirectory named after the original file
+4. Generates focused sub-documents for each major section
+5. Creates `README.md` index with section summaries and navigation
+6. Archives original file as `*.md.old`
 
-### Validate Documentation
-```bash
-ruby .agent/skills/context-documenter/scripts/validate_docs.rb .agent/context/etsy-integration.md
+**Example:**
+```
+Before:
+  .agent/context/features/orders.md (500 lines)
+
+After:
+  .agent/context/features/orders/README.md          (index)
+  .agent/context/features/orders/core-models.md
+  .agent/context/features/orders/services.md
+  .agent/context/features/orders/controllers.md
+  .agent/context/features/orders.md.old             (archive)
 ```
 
-This checks for:
-- Broken file references
-- Broken documentation links
-- Placeholder text
-- Markdown structure issues
+**When to use:**
+- Documentation file exceeds 250 lines
+- Multiple topics mixed in one file
+- Difficult to navigate or find specific information
+- As part of regular documentation maintenance
 
-## Directory Structure
+**Filters:**
+- Skips sections shorter than 20 lines (too small to be meaningful)
+- Skips files with no clear H2 section structure
+- Only processes `.md` files in `.agent/context/`
 
-```
-context-documenter/
-├── SKILL.md                 # Main skill instructions
-├── README.md                # This file
-├── scripts/
-│   ├── analyze_feature.rb   # Analyzes codebase for documentation
-│   └── validate_docs.rb     # Validates existing documentation
-├── assets/
-│   ├── feature-integration.md    # Template for integrations
-│   ├── component-architecture.md # Template for components
-│   ├── frontend-pattern.md       # Template for frontend patterns
-│   └── technical-guide.md        # Template for how-tos
-└── references/
-    └── etsy-integration-example.md  # Example of good docs
-```
+### 2. `analyze_feature.rb`
 
-## Templates
+*(Not yet implemented)*
 
-Choose the appropriate template from `assets/`:
+Analyzes a feature area to suggest documentation structure.
 
-- **feature-integration.md**: For third-party integrations (Etsy, Bambu, Stripe, etc.)
-- **component-architecture.md**: For major components (fleet management, inventory, etc.)
-- **frontend-pattern.md**: For React/frontend patterns
-- **technical-guide.md**: For debugging guides and how-tos
+### 3. `validate_docs.rb`
+
+*(Not yet implemented)*
+
+Validates documentation for broken links and outdated code references.
+
+## Workflow
+
+**Typical documentation maintenance workflow:**
+
+1. **Check for oversized files:**
+   ```bash
+   ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb --dry-run
+   ```
+
+2. **Review the preview** to see what would be split
+
+3. **Run the split** (remove `--dry-run`):
+   ```bash
+   ruby .claude/skills/context-documenter/scripts/split_oversized_docs.rb
+   ```
+
+4. **Review the results:**
+   - Check the new subdirectories
+   - Read the generated README.md index files
+   - Verify sections were split logically
+
+5. **Clean up archives:**
+   ```bash
+   # If satisfied with results, delete .old files
+   find .agent/context -name "*.md.old" -delete
+   ```
+
+6. **Commit changes:**
+   ```bash
+   git add .agent/context
+   git commit -m "docs: split oversized documentation files for better readability"
+   ```
 
 ## Best Practices
 
-1. **Run analyze_feature.rb first** - It saves time by finding all related files
-2. **Choose the right template** - Don't force a pattern if it doesn't fit
-3. **Keep it current** - Update docs when you refactor code
-4. **Validate before committing** - Run validate_docs.rb to catch errors
-5. **Link related docs** - Cross-reference other context files
+### Writing Documentation for Splitting
 
-## Workflow Example
+To ensure documentation splits cleanly:
 
-```bash
-# 1. Analyze the feature
-ruby .agent/skills/context-documenter/scripts/analyze_feature.rb bambu
+1. **Use H2 headings** (`##`) for major sections:
+   ```markdown
+   ## Core Models
+   ## Services
+   ## Controllers / API Endpoints
+   ```
 
-# 2. Copy appropriate template
-cp .agent/skills/context-documenter/assets/feature-integration.md \
-   .agent/context/bambu-mqtt-integration.md
+2. **Keep sections focused** - each H2 section should cover one topic
 
-# 3. Fill in the template with real information
+3. **Make sections meaningful** - aim for 20+ lines per section
 
-# 4. Validate the documentation
-ruby .agent/skills/context-documenter/scripts/validate_docs.rb \
-   .agent/context/bambu-mqtt-integration.md
+4. **Use descriptive headings** - "Core Models" not "Models", "API Endpoints" not "Endpoints"
 
-# 5. Fix any errors and commit
-```
+5. **Cross-reference** - link to related sections in other files
 
-## When to Document
+### Maintaining Split Documentation
 
-- ✅ After implementing a new feature
-- ✅ After significant refactoring
-- ✅ When adding a third-party integration
-- ✅ When establishing a new pattern
-- ✅ When fixing complex bugs
+After splitting:
 
-## Contributing
+1. **Update specific sections** - edit the sub-documents, not the index
+2. **Keep README current** - regenerate if section structure changes
+3. **Monitor size** - if sub-documents exceed 250 lines, consider further splitting
+4. **Use relative links** - `[See Services](./services.md)` for navigation
 
-If you create new templates or improve the scripts, make sure to:
-1. Update this README
-2. Add examples to `references/`
-3. Test the scripts on real features
-4. Document any new conventions
+## Technical Details
+
+**Language:** Ruby 3.x+
+
+**Dependencies:** None (uses only Ruby stdlib)
+
+**Files Modified:**
+- Creates: `<original-basename>/` directory
+- Creates: `<original-basename>/README.md` (index)
+- Creates: `<original-basename>/<section-name>.md` (one per H2 section)
+- Renames: `<original-file>.md` → `<original-file>.md.old`
+
+**Safety:**
+- `--dry-run` flag for preview
+- Original files archived (not deleted)
+- Only processes files in `.agent/context/`
+- Filters out sections < 20 lines
