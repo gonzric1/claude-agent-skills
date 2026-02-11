@@ -31,7 +31,7 @@ This skill provides helper scripts that MUST be used instead of raw `bd` command
 - Race conditions (daemon overwrites your claim)
 - Wrong task selection (pick up review tasks by mistake)
 - Stale parent relationships (issues show as blocked)
-- Contradictory label states (review-finding + ready-for-review)
+- Inconsistent state (missing sync, wrong filters)
 
 ### ✅ CORRECT: Use These Scripts
 
