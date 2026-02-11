@@ -120,29 +120,30 @@ This will:
 
 ### **3. The Triage Phase**
 
-For every issue found, create a beads ticket:
+For every issue found, create a normal beads ticket (bug, task, etc.):
 
 ```bash
-bd create "Issue title" \
+bd create --title "Fix TypeScript error in UserLogin" \
+  --type bug \
   --priority <0-4> \
-  --labels "<priority-label>,review-finding" \
   --description "Detailed description of the issue" \
   --acceptance "What must be done to resolve this"
 ```
 
-**⚠️ IMPORTANT: Do NOT add `ready-for-review` label to review findings!**
-- Review findings are issues that need to be IMPLEMENTED, not reviewed
-- The `ready-for-review` label is ONLY for tasks that have been implemented and await review
-- Adding `ready-for-review` to findings prevents `/task-implementer` from picking them up
+**Choose appropriate issue type:**
+* `bug` - Code defects, errors, broken functionality
+* `task` - Work items, improvements, refactoring
+* `documentation` - Missing or incorrect documentation
+* `test` - Missing or inadequate test coverage
 
 **Priority mapping:**
-* **P0 (0)**: Critical (Security, Data Loss, No Tests for Core Logic) - add `critical,blocks-approval` labels
-* **P1 (1)**: Major (SOLID violations, missing YARD/TSDoc on public APIs) - add `major` label
-* **P2 (2)**: Moderate (Maintainability issues, complex methods) - add `moderate` label
-* **P3 (3)**: Standard (General improvements) - add `ticket` label
-* **P4 (4)**: Nit (Style, naming, or minor refactors) - add `nit` label
+* **P0 (0)**: Critical (Security, Data Loss, No Tests for Core Logic)
+* **P1 (1)**: Major (SOLID violations, missing YARD/TSDoc on public APIs)
+* **P2 (2)**: Moderate (Maintainability issues, complex methods)
+* **P3 (3)**: Standard (General improvements)
+* **P4 (4)**: Nit (Style, naming, or minor refactors)
 
-### **4. Review Decision & Review Summary**
+### **4. Review Decision**
 
 After completing your review, you must take one of two actions:
 
@@ -159,46 +160,26 @@ Simply provide approval message. No script needed.
 
 #### **If the code has issues** (failed tests, SOLID violations, missing docs, etc.):
 
-1. **Create implementation tickets** for each issue found (as described in Step 3)
+1. **Create tickets for each issue** (as described in Step 3 - use normal bug/task types)
 
-2. **Create a review-summary issue** as parent for all findings:
-
+2. **Add blocking dependencies** to prevent re-review until fixes are done:
 ```bash
-bd create "Code Review: [Feature Name]" \
-  --priority 1 \
-  --labels "review-summary" \
-  --description "$(cat <<'EOF'
-## Review Verdict: FAIL
-
-[Brief explanation of why code was rejected]
-
-## Summary
-- Files reviewed: X
-- Issues found: Y
-- Blocking issues: Z
-
-## What Works Well
-[Positive feedback]
-
-## Required Before Approval
-1. [Blocking issue 1]
-2. [Blocking issue 2]
-EOF
-)"
+# For each ticket created, add it as a blocker to the original task
+bd dep add <original-task-id> <new-ticket-id>
 ```
 
-3. **Link child tickets to the review-summary:**
+3. **(Optional) Add parent relationship** for context:
 ```bash
-bd update <child-ticket-id> --parent <review-summary-id>
+# Link tickets to original task for context
+bd update <new-ticket-id> --parent <original-task-id>
 ```
 
-4. **For specific tasks, reject the task:**
-```bash
-ruby [[ @scripts/reject_task.rb ]] <optional_task_id>
-```
-This adds `review-failed` label and removes `ready-for-review`.
+4. **That's it!** The original task keeps its `ready-for-review` label, but:
+   - Won't appear in `bd ready --label ready-for-review` (blocked by dependencies)
+   - When fix tickets are closed, automatically unblocks
+   - Task implementer can pick up fix tickets immediately (they appear in `bd ready`)
 
-*Note: If only one task has ready-for-review label, the task ID is optional.*
+*Note: No need to remove `ready-for-review` label or add `review-failed` label - blocking dependencies handle the workflow automatically.*
 
 ### **5. Output Format**
 

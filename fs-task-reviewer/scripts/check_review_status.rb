@@ -37,9 +37,43 @@ end
 output = run_bd("list --status open --label review-summary --json")
 review_summaries = parse_json(output)
 
+# Check for orphaned review-findings from closed reviews
+def check_orphaned_findings
+  output = run_bd("list --status open --label review-finding --label ready-for-review --json", allow_failure: true)
+  return [] if output.nil?
+
+  orphaned = parse_json(output)
+  return [] if orphaned.empty?
+
+  # These are review-findings that also have ready-for-review label
+  # This is contradictory - findings should be implemented first, then reviewed
+  orphaned
+end
+
 if review_summaries.empty?
-  puts "❌ No review-summary found"
-  puts "\nAction: Perform a full code review of uncommitted changes"
+  orphaned = check_orphaned_findings
+
+  if orphaned.any?
+    puts "⚠️  No active review-summary found"
+    puts "\n⚠️  WARNING: Found #{orphaned.length} tasks with BOTH 'review-finding' AND 'ready-for-review' labels"
+    puts "This is contradictory - review-findings should be implemented before being marked ready-for-review.\n\n"
+
+    orphaned.each do |task|
+      labels = task['labels'] || []
+      priority = task['priority'] || '?'
+      puts "  • #{task['id']} (P#{priority}): #{task['title']}"
+      puts "    Labels: #{labels.join(', ')}"
+    end
+
+    puts "\n🤔 Recommended Action:"
+    puts "  1. Review these tasks to determine if they were actually implemented"
+    puts "  2. If implemented: Remove 'review-finding' label and proceed with review"
+    puts "  3. If NOT implemented: Remove 'ready-for-review' label and mark as 'open' for implementation"
+    puts "\nOtherwise, perform a full code review of uncommitted changes"
+  else
+    puts "❌ No review-summary found"
+    puts "\nAction: Perform a full code review of uncommitted changes"
+  end
   exit 0
 end
 
@@ -115,6 +149,11 @@ elsif !all_resolved
   puts "\n✅ No BLOCKING issues remain!"
   puts "\nClosing review-summary..."
 
+  # Remove parent relationships from all children so they become independent tasks
+  children.each do |child_id|
+    run_bd("update #{child_id} --parent \"\"", allow_failure: true)
+  end
+
   # Close the review summary
   run_bd("close #{review_id}")
   puts "✅ Closed: #{review_id}"
@@ -128,6 +167,11 @@ elsif !all_resolved
 else
   puts "\n✅ All issues resolved!"
   puts "\nClosing review-summary..."
+
+  # Remove parent relationships from all children so they become independent tasks
+  children.each do |child_id|
+    run_bd("update #{child_id} --parent \"\"", allow_failure: true)
+  end
 
   # Close the review summary
   run_bd("close #{review_id}")

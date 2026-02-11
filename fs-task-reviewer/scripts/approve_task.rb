@@ -37,12 +37,16 @@ end
 target_id = ARGV[0]
 
 if target_id.nil?
-  # Find tasks with ready-for-review label
-  output = run_bd("list --status open --label ready-for-review --json")
+  # Find tasks with ready-for-review label that are unblocked
+  # bd ready automatically filters out blocked tasks
+  output = run_bd("ready --label ready-for-review --json")
   tasks = parse_json(output)
 
   if tasks.empty?
     puts "No tasks ready for review."
+    puts ""
+    puts "Note: Tasks with ready-for-review label but blocked by dependencies"
+    puts "will not appear here. Check 'bd blocked' to see blocked tasks."
     exit 0
   elsif tasks.length == 1
     target_id = tasks.first['id']
