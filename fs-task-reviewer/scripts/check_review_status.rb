@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Check if a review-summary issue exists and verify if blocking issues are resolved
+# Check status of tasks in review (tasks with ready-for-review label)
+# Shows which tasks are ready for review and which are blocked by dependencies
 
 require 'json'
 require 'open3'
@@ -28,159 +29,105 @@ end
 # Helper to parse JSON from bd output
 def parse_json(output)
   return [] if output.nil? || output.strip.empty?
-  JSON.parse(output)
+
+  # Find where JSON starts
+  lines = output.split("\n")
+  json_start_idx = lines.index { |line| line.strip.start_with?('{') || line.strip.start_with?('[') }
+  return [] if json_start_idx.nil?
+
+  json_text = lines[json_start_idx..].join("\n")
+  result = JSON.parse(json_text)
+  result.is_a?(Hash) ? [result] : result
 rescue JSON::ParserError
   []
 end
 
-# Find review-summary issues (open issues with review-summary label)
-output = run_bd("list --status open --label review-summary --json")
-review_summaries = parse_json(output)
+puts "=" * 70
+puts "📋 Review Status Check"
+puts "=" * 70
+puts ""
 
-# Check for orphaned review-findings from closed reviews
-def check_orphaned_findings
-  output = run_bd("list --status open --label review-finding --label ready-for-review --json", allow_failure: true)
-  return [] if output.nil?
+# Find all tasks with ready-for-review label (both blocked and unblocked)
+all_output = run_bd("list --status open --label ready-for-review --json")
+all_review_tasks = parse_json(all_output)
 
-  orphaned = parse_json(output)
-  return [] if orphaned.empty?
-
-  # These are review-findings that also have ready-for-review label
-  # This is contradictory - findings should be implemented first, then reviewed
-  orphaned
+if all_review_tasks.empty?
+  puts "✅ No tasks currently in review"
+  puts ""
+  puts "Action: Use 'bd list --status open' to see available work,"
+  puts "        or perform a code review of uncommitted changes."
+  exit 0
 end
 
-if review_summaries.empty?
-  orphaned = check_orphaned_findings
+# Check which are actually unblocked (ready for review NOW)
+ready_output = run_bd("ready --label ready-for-review --json")
+ready_tasks = parse_json(ready_output)
 
-  if orphaned.any?
-    puts "⚠️  No active review-summary found"
-    puts "\n⚠️  WARNING: Found #{orphaned.length} tasks with BOTH 'review-finding' AND 'ready-for-review' labels"
-    puts "This is contradictory - review-findings should be implemented before being marked ready-for-review.\n\n"
+ready_ids = ready_tasks.map { |t| t['id'] }
+blocked_tasks = all_review_tasks.reject { |t| ready_ids.include?(t['id']) }
 
-    orphaned.each do |task|
-      labels = task['labels'] || []
-      priority = task['priority'] || '?'
-      puts "  • #{task['id']} (P#{priority}): #{task['title']}"
-      puts "    Labels: #{labels.join(', ')}"
+# Show unblocked tasks (ready for review now)
+if ready_tasks.any?
+  puts "✅ Tasks Ready for Review (#{ready_tasks.length})"
+  puts "-" * 70
+  ready_tasks.each do |task|
+    priority = task['priority'] || '?'
+    puts "  • #{task['id']} (P#{priority}): #{task['title']}"
+  end
+  puts ""
+end
+
+# Show blocked tasks (awaiting fixes)
+if blocked_tasks.any?
+  puts "⏳ Tasks Awaiting Fixes (#{blocked_tasks.length})"
+  puts "-" * 70
+
+  blocked_tasks.each do |task|
+    priority = task['priority'] || '?'
+    puts "  • #{task['id']} (P#{priority}): #{task['title']}"
+
+    # Show what's blocking it
+    show_output = run_bd("show #{task['id']} --json")
+    details = parse_json(show_output).first
+
+    if details && details['blocked_by']&.any?
+      puts "    Blocked by:"
+      details['blocked_by'].each do |blocker_id|
+        # Get blocker status
+        blocker_output = run_bd("show #{blocker_id} --json", allow_failure: true)
+        blocker = parse_json(blocker_output).first
+
+        if blocker
+          status = blocker['status']
+          icon = status == 'closed' ? '✅' : '❌'
+          puts "      #{icon} #{blocker_id}: #{blocker['title']} (#{status})"
+        else
+          puts "      ⚠️  #{blocker_id}: (not found)"
+        end
+      end
     end
-
-    puts "\n🤔 Recommended Action:"
-    puts "  1. Review these tasks to determine if they were actually implemented"
-    puts "  2. If implemented: Remove 'review-finding' label and proceed with review"
-    puts "  3. If NOT implemented: Remove 'ready-for-review' label and mark as 'open' for implementation"
-    puts "\nOtherwise, perform a full code review of uncommitted changes"
-  else
-    puts "❌ No review-summary found"
-    puts "\nAction: Perform a full code review of uncommitted changes"
+    puts ""
   end
-  exit 0
 end
 
-# Take the first review summary
-review_summary = review_summaries.first
-review_id = review_summary['id']
+puts "=" * 70
 
-puts "📋 Found review-summary: #{review_id}"
-puts "   Title: #{review_summary['title']}"
-puts "\n" + "=" * 60
-
-# Get children of the review summary (blocking tickets)
-output = run_bd("show #{review_id} --json")
-review_details = parse_json(output)
-review_details = review_details.first if review_details.is_a?(Array)
-
-children = review_details['children'] || []
-
-if children.empty?
-  puts "\n⚠️  No child tickets found for this review."
-  puts "The review-summary may need to be manually verified."
-  exit 1
+# Summary and next steps
+if ready_tasks.any?
+  puts "\n✅ #{ready_tasks.length} task(s) ready for review"
+  puts ""
+  puts "Next steps:"
+  puts "  ruby .agent/skills/fs-task-reviewer/scripts/get_task_for_review.rb"
+  puts "  (or run: bd ready --label ready-for-review)"
+elsif blocked_tasks.any?
+  puts "\n⏳ All tasks in review are blocked by dependencies"
+  puts ""
+  puts "Next steps:"
+  puts "  1. Check blocked task details: bd show <task-id>"
+  puts "  2. Work on blocking tickets (they appear in: bd ready)"
+  puts "  3. Re-run this check after closing blockers"
+  puts ""
+  puts "Tasks will automatically become ready for review when blockers are closed."
 end
 
-puts "\n📝 Tickets from review:"
-
-blocking_unresolved = []
-all_resolved = true
-
-children.each_with_index do |child_id, idx|
-  # Get child status
-  child_output = run_bd("show #{child_id} --json")
-  child_details = parse_json(child_output)
-  child_details = child_details.first if child_details.is_a?(Array)
-
-  next unless child_details
-
-  status = child_details['status']
-  labels = child_details['labels'] || []
-  title = child_details['title']
-  is_blocking = labels.include?('blocks-approval') || labels.include?('critical')
-
-  if status == 'closed'
-    icon = "✅"
-    status_text = "completed"
-  else
-    icon = "❌"
-    status_text = status
-    all_resolved = false
-    blocking_unresolved << child_id if is_blocking
-  end
-
-  blocking_marker = is_blocking ? " [BLOCKING]" : ""
-  puts "  #{idx + 1}. #{icon} #{child_id}: #{title} (#{status_text})#{blocking_marker}"
-end
-
-puts "\n" + "=" * 60
-
-if blocking_unresolved.any?
-  puts "\n🚫 BLOCKING ISSUES REMAIN:"
-  blocking_unresolved.each do |id|
-    puts "   - #{id}"
-  end
-  puts "\n❌ Review NOT complete - address blocking issues first"
-  puts "\nNext steps:"
-  puts "  1. Work on blocking tickets: bd show <ticket-id>"
-  puts "  2. Close completed tickets: bd close <ticket-id>"
-  puts "  3. Re-run this check"
-  exit 1
-elsif !all_resolved
-  puts "\n⚠️  Some non-blocking issues remain open."
-  puts "These can be addressed in follow-up PRs."
-  puts "\n✅ No BLOCKING issues remain!"
-  puts "\nClosing review-summary..."
-
-  # Remove parent relationships from all children so they become independent tasks
-  children.each do |child_id|
-    run_bd("update #{child_id} --parent \"\"", allow_failure: true)
-  end
-
-  # Close the review summary
-  run_bd("close #{review_id}")
-  puts "✅ Closed: #{review_id}"
-
-  puts "\n🎉 Code is ready for approval!"
-  puts "\nSuggested next steps:"
-  puts "  1. Run final test suite"
-  puts "  2. Verify all changes are committed"
-  puts "  3. Create pull request or merge to main"
-  exit 0
-else
-  puts "\n✅ All issues resolved!"
-  puts "\nClosing review-summary..."
-
-  # Remove parent relationships from all children so they become independent tasks
-  children.each do |child_id|
-    run_bd("update #{child_id} --parent \"\"", allow_failure: true)
-  end
-
-  # Close the review summary
-  run_bd("close #{review_id}")
-  puts "✅ Closed: #{review_id}"
-
-  puts "\n🎉 Code is ready for approval!"
-  puts "\nSuggested next steps:"
-  puts "  1. Run final test suite"
-  puts "  2. Verify all changes are committed"
-  puts "  3. Create pull request or merge to main"
-  exit 0
-end
+puts ""
