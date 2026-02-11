@@ -105,6 +105,16 @@ if tasks.empty?
     puts ""
   end
 
+  # Run validation to check for data issues
+  puts "Running state validation to check for issues..."
+  puts ""
+
+  validation_script = File.join(Dir.pwd, '.agent', 'scripts', 'validate_beads_state.rb')
+  if File.exist?(validation_script)
+    system("ruby #{validation_script}")
+    puts ""
+  end
+
   puts "=" * 60
   puts "ACTION REQUIRED: Run /fs-task-reviewer skill to review"
   puts "tasks labeled 'ready-for-review' instead."

@@ -7,6 +7,36 @@ description: Drives the implementation of backlog tasks using beads issue tracki
 
 This skill implements tasks from the beads issue tracker. It handles the entire lifecycle: selecting high-priority unblocked work, performing the implementation, and marking tasks ready for review.
 
+## ⚠️ CRITICAL: Script Usage Protocol
+
+### MANDATORY Script Usage
+
+This skill provides helper scripts that MUST be used instead of raw `bd` commands.
+
+**Why scripts are mandatory:**
+1. **Race condition prevention** - Scripts call `bd sync` immediately after state changes
+2. **Label filtering** - Scripts filter tasks agents shouldn't touch
+3. **State validation** - Scripts ensure consistent label states
+4. **Parent cleanup** - Scripts remove stale relationships
+
+### ❌ PROHIBITED: Raw bd Commands
+
+**NEVER run these directly:**
+- `bd update <id> --status in_progress` → Use `start_next_task.rb`
+- `bd update <id> --add-label ready-for-review` → Use `complete_task.rb`
+- `bd close <id>` → Use appropriate completion/approval script
+- `bd create` for findings → Use reviewer workflow scripts
+
+**Consequences of bypassing:**
+- Race conditions (daemon overwrites your claim)
+- Wrong task selection (pick up review tasks by mistake)
+- Stale parent relationships (issues show as blocked)
+- Contradictory label states (review-finding + ready-for-review)
+
+### ✅ CORRECT: Use These Scripts
+
+See workflow section below for proper script usage.
+
 ## Prerequisites
 
 Initialize beads in your project if not already done:
