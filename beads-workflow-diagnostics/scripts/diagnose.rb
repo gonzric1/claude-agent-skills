@@ -20,6 +20,52 @@ class BeadsWorkflowDiagnostic
     # No known conflict pairs currently
   ].freeze
 
+  # Allowed labels (managed by skills or valid category labels)
+  WORKFLOW_LABELS = %w[
+    ready-for-review
+    review-passed
+  ].freeze
+
+  PRIORITY_LABELS = %w[
+    critical
+    major
+    moderate
+    ticket
+    nit
+  ].freeze
+
+  CATEGORY_LABELS = %w[
+    api
+    backend
+    component
+    controller
+    core-feature
+    database
+    documentation
+    frontend
+    integration
+    migration
+    model
+    react
+    refactoring
+    service
+    test
+    testing
+    typescript
+    types
+    workflow
+  ].freeze
+
+  ALLOWED_LABELS = (WORKFLOW_LABELS + PRIORITY_LABELS + CATEGORY_LABELS).freeze
+
+  OBSOLETE_LABELS = %w[
+    review-finding
+    review-failed
+    review-summary
+    blocks-approval
+    pre-existing
+  ].freeze
+
   STUCK_THRESHOLD_HOURS = 24
 
   def initialize
@@ -35,6 +81,7 @@ class BeadsWorkflowDiagnostic
 
     load_all_issues
     check_label_conflicts
+    check_invalid_labels
     check_orphaned_parents
     check_stuck_issues
     check_dependencies
@@ -98,8 +145,45 @@ class BeadsWorkflowDiagnostic
     end
   end
 
+  def check_invalid_labels
+    puts "\n2️⃣  Checking for invalid/obsolete labels..."
+    invalid_issues = []
+
+    @issues.each do |issue|
+      labels = issue['labels'] || []
+
+      # Find invalid labels (not in whitelist)
+      invalid = labels.reject { |label| ALLOWED_LABELS.include?(label) }
+
+      # Add obsolete labels even if somehow in whitelist
+      obsolete = labels & OBSOLETE_LABELS
+
+      to_flag = (invalid + obsolete).uniq
+
+      next if to_flag.empty?
+
+      invalid_issues << {
+        id: issue['id'],
+        title: issue['title'],
+        all_labels: labels,
+        invalid: to_flag
+      }
+    end
+
+    if invalid_issues.any?
+      @problems << "Invalid/obsolete labels found (#{invalid_issues.size} issues)"
+      invalid_issues.each do |item|
+        puts "   ❌ #{item[:id]}: Has invalid labels: #{item[:invalid].join(', ')}"
+        puts "      Title: #{item[:title]}"
+        puts "      All labels: #{item[:all_labels].join(', ')}"
+      end
+    else
+      puts "   ✓ No invalid labels"
+    end
+  end
+
   def check_orphaned_parents
-    puts "\n2️⃣  Checking for orphaned parent relationships..."
+    puts "\n3️⃣  Checking for orphaned parent relationships..."
     orphaned = []
 
     # Get all issues (we already have them from bd export)
@@ -150,7 +234,7 @@ class BeadsWorkflowDiagnostic
   end
 
   def check_stuck_issues
-    puts "\n3️⃣  Checking for stuck in_progress issues..."
+    puts "\n4️⃣  Checking for stuck in_progress issues..."
     stuck = []
     now = Time.now
 
@@ -185,7 +269,7 @@ class BeadsWorkflowDiagnostic
   end
 
   def check_dependencies
-    puts "\n4️⃣  Checking dependency graph..."
+    puts "\n5️⃣  Checking dependency graph..."
 
     # Build dependency graph from dependencies array
     graph = {}
@@ -236,7 +320,7 @@ class BeadsWorkflowDiagnostic
   end
 
   def check_ready_queue_consistency
-    puts "\n5️⃣  Checking bd ready queue consistency..."
+    puts "\n6️⃣  Checking bd ready queue consistency..."
 
     # Parse bd ready output (it's plain text, not JSON)
     ready_output, = run_command('bd ready')
