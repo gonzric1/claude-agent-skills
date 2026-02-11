@@ -99,11 +99,9 @@ bd close PROJ-1
 
 **Workflow Labels:**
 - `ready-for-review` - Awaiting code review
-- `review-passed` - Approved
-- `review-failed` - Needs rework
-- `review-finding` - Created from code review
-- `review-summary` - Parent issue tracking review
-- `blocks-approval` - Must fix before approval
+- `review-passed` - Approved by code review
+
+**Note:** Review-generated tickets use normal issue types (bug, task, documentation) with blocking dependencies. No special labels needed.
 
 **Priority Labels:**
 - `critical`, `major`, `moderate`, `ticket`, `nit`
