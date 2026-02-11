@@ -52,6 +52,25 @@ all_output = run_bd("list --status open --label ready-for-review --json")
 all_review_tasks = parse_json(all_output)
 
 if all_review_tasks.empty?
+  # First, check if workflow corruption is causing the issue
+  diagnostic_script = File.expand_path('~/.claude/skills/beads-workflow-diagnostics/scripts/check_and_fix.rb')
+
+  if File.exist?(diagnostic_script)
+    puts "Checking for workflow inconsistencies..."
+    system("ruby #{diagnostic_script} --verbose")
+    exit_code = $?.exitstatus
+
+    if exit_code == 0
+      # Fixes were applied, re-run this script to try again
+      puts ""
+      puts "Workflow fixes applied. Rechecking review queue..."
+      puts ""
+      exec($PROGRAM_NAME, *ARGV)
+    end
+    # If exit_code == 1, no issues found, continue with normal "no tasks" output
+    puts ""
+  end
+
   puts "✅ No tasks currently in review"
   puts "Ask the user what they wish to do instead"
   exit 0

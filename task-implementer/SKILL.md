@@ -64,7 +64,18 @@ Run the script to:
 ruby [[ @scripts/start_next_task.rb ]]
 ```
 
-**If no tasks are found**: The script will output "No tasks ready to work on!" and show any in-progress or blocked tasks. Report this to the user and STOP.
+**If no tasks are found**:
+1. Check for workflow corruption by running:
+   ```bash
+   ruby ~/.claude/skills/beads-workflow-diagnostics/scripts/check_and_fix.rb --verbose
+   ```
+2. If the script exits with code 0 (fixes applied):
+   - Re-run `start_next_task.rb` to try again
+   - Inform the user: "Workflow inconsistency detected and fixed. Retrying task selection..."
+3. If the script exits with code 1 (no issues):
+   - Report to user: "No tasks ready to work on!"
+   - Show any in-progress or blocked tasks
+   - STOP
 
 ### ⚠️ Tool Usage Protocol
 To ensure you receive the task content:
