@@ -53,9 +53,7 @@ all_review_tasks = parse_json(all_output)
 
 if all_review_tasks.empty?
   puts "✅ No tasks currently in review"
-  puts ""
-  puts "Action: Use 'bd list --status open' to see available work,"
-  puts "        or perform a code review of uncommitted changes."
+  puts "Ask the user what they wish to do instead"
   exit 0
 end
 
@@ -118,7 +116,6 @@ if ready_tasks.any?
   puts ""
   puts "Next steps:"
   puts "  ruby .agent/skills/fs-task-reviewer/scripts/get_task_for_review.rb"
-  puts "  (or run: bd ready --label ready-for-review)"
 elsif blocked_tasks.any?
   puts "\n⏳ All tasks in review are blocked by dependencies"
   puts ""
