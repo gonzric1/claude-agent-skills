@@ -100,6 +100,11 @@ bd create "Issue title" \
   --acceptance "What must be done to resolve this"
 ```
 
+**⚠️ IMPORTANT: Do NOT add `ready-for-review` label to review findings!**
+- Review findings are issues that need to be IMPLEMENTED, not reviewed
+- The `ready-for-review` label is ONLY for tasks that have been implemented and await review
+- Adding `ready-for-review` to findings prevents `/task-implementer` from picking them up
+
 **Priority mapping:**
 * **P0 (0)**: Critical (Security, Data Loss, No Tests for Core Logic) - add `critical,blocks-approval` labels
 * **P1 (1)**: Major (SOLID violations, missing YARD/TSDoc on public APIs) - add `major` label
@@ -290,10 +295,10 @@ Code is ready for approval!
 ## **Label Conventions**
 
 ### Workflow Labels
-- `ready-for-review` - Awaiting code review
+- `ready-for-review` - Task has been implemented and awaits code review (⚠️ NEVER add to `review-finding` issues)
 - `review-passed` - Approved and closed
 - `review-failed` - Needs rework
-- `review-finding` - Created from code review
+- `review-finding` - Issue created from code review that needs implementation (should NOT have `ready-for-review`)
 - `review-summary` - Parent issue tracking review
 - `blocks-approval` - Must fix before approval
 
