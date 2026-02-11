@@ -1,6 +1,6 @@
 # fs-task-reviewer Workflow Examples
 
-This document provides practical examples of how to use the fs-task-reviewer skill in both verification and full review modes.
+This document provides practical examples of how to use the fs-task-reviewer skill with the beads issue tracking system.
 
 ---
 
@@ -10,214 +10,279 @@ This document provides practical examples of how to use the fs-task-reviewer ski
 # Always start with this
 ruby scripts/check_review_status.rb
 
-# If no review exists, get changes to review
-ruby scripts/get_uncommitted_changes.rb        # For uncommitted changes
-# OR
-ruby scripts/get_task_for_review.rb           # For formal tasks
+# If tasks are ready for review
+ruby scripts/get_task_for_review.rb
 
 # Run static analysis
 bash scripts/review-suite.sh
 
-# After creating tickets and review-summary, verify later
-ruby scripts/check_review_status.rb
+# If issues found, create normal tickets
+bd create --title "Add test coverage" --type task --priority 0
+bd create --title "Add YARD docs" --type documentation --priority 1
 
-# Once all blocking issues resolved
-# Script automatically moves review-summary to completed/
+# Add blocking dependencies
+bd dep add <original-task-id> <fix-ticket-id>
+
+# If review passes, approve the task
+ruby scripts/approve_task.rb <task-id>
 ```
 
 ---
 
-## Example 1: First Code Review (No Existing Review)
+## Example 1: First Code Review (Task Ready for Review)
 
-### Developer: "I just fixed a bug, can you review?"
+### Developer: "I finished implementing the feature, ready for review"
 
-**Step 1: Check for existing review**
+**Step 1: Check review status**
 ```bash
 $ ruby scripts/check_review_status.rb
-❌ No review-summary found in .agent/tasks/to-do
-Expected filename pattern: REVIEW-SUMMARY-YYYY-MM-DD-*.md
 
-Action: Perform a full code review of uncommitted changes
+✅ Tasks Ready for Review (1)
+  • PrintMines-abc: Add printer fleet monitoring
+
+⏳ Tasks Awaiting Fixes (0)
+
+Next steps:
+  ruby scripts/get_task_for_review.rb
 ```
 
-**Step 2: See what changed**
+**Step 2: Get task for review**
 ```bash
-$ ruby scripts/get_uncommitted_changes.rb
-📊 Uncommitted Changes Summary
+$ ruby scripts/get_task_for_review.rb
+
+============================================================
+TASK READY FOR REVIEW
 ============================================================
 
-Total files changed: 3
-  • Staged:    2
-  • Unstaged:  1
-  • Untracked: 0
+ID: PrintMines-abc
+Title: Add printer fleet monitoring
+Priority: 1 (major)
+Status: open
+Labels: ready-for-review
 
-📁 By Category:
-  • Ruby: 1 files
-  • Tests: 1 files
-  • Docs: 1 files
+Description:
+Implement real-time monitoring for the printer fleet using
+WebSocket connections to track status, print progress, and
+error conditions.
 
-📝 Changed Files:
-------------------------------------------------------------
-  [S] app/services/printer_websocket_monitor.rb
-  [S] test/services/printer_websocket_monitor_test.rb
-  [M] .agent/context/integrations/centauri_websocket.md
+Acceptance Criteria:
+- WebSocket client connects to all printers
+- Status updates displayed in UI
+- Error alerts shown immediately
+- Tests cover connection handling
 
-✅ Ready for code review
+============================================================
 ```
 
 **Step 3: Run static analysis**
 ```bash
 $ bash scripts/review-suite.sh
-[RuboCop, Brakeman, ESLint results...]
+Running RuboCop...
+✅ No offenses detected
+
+Running Brakeman...
+✅ No security issues found
+
+Running ESLint...
+✅ No linting errors
+
+Running tests...
+❌ 2 tests failed in printer_monitor_test.rb
 ```
 
 **Step 4: Manual review finds issues**
 
 Issues found:
-- ❌ New thread logic but only 4 basic tests (CRITICAL)
-- ❌ Missing YARD documentation on new method (MAJOR)
-- ❌ Generic error handling in background thread (MODERATE)
+- ❌ Tests failing - WebSocket connection timeout not handled (P0 - Critical)
+- ❌ No YARD documentation on new MonitorService class (P1 - Major)
+- ❌ Error handling swallows exceptions without logging (P2 - Moderate)
 
-**Step 5: Create tickets**
+**Step 5: Create tickets for issues**
 
-Agent creates:
-- `CRITICAL-2026-02-09-add-thread-test-coverage.md`
-- `7-2026-02-09-add-yard-documentation.md`
-- `5-2026-02-09-improve-error-handling.md`
+```bash
+$ bd create --title "Fix WebSocket timeout test failures" \
+  --type bug \
+  --priority 0 \
+  --description "printer_monitor_test.rb has 2 failing tests due to missing timeout handling in MonitorService#connect" \
+  --acceptance "All tests pass. Add timeout parameter (default 5s) to connect method."
 
-**Step 6: Create review-summary**
+Created PrintMines-f1
 
-Agent creates:
-- `REVIEW-SUMMARY-2026-02-09-centauri-polling-fix.md`
+$ bd create --title "Add YARD documentation to MonitorService" \
+  --type documentation \
+  --priority 1 \
+  --description "MonitorService class and public methods lack YARD docs" \
+  --acceptance "Add @param, @return, @raise documentation to all public methods"
 
-**Review Verdict: REJECTED ❌**
+Created PrintMines-f2
+
+$ bd create --title "Add error logging to exception handlers" \
+  --type task \
+  --priority 2 \
+  --description "Exception rescue blocks in MonitorService don't log errors before re-raising" \
+  --acceptance "Add Rails.logger.error with context before each rescue/re-raise"
+
+Created PrintMines-f3
+```
+
+**Step 6: Add blocking dependencies**
+
+```bash
+$ bd dep add PrintMines-abc PrintMines-f1
+$ bd dep add PrintMines-abc PrintMines-f2
+$ bd dep add PrintMines-abc PrintMines-f3
+
+# Optional: Add parent relationships for context
+$ bd update PrintMines-f1 --parent PrintMines-abc
+$ bd update PrintMines-f2 --parent PrintMines-abc
+$ bd update PrintMines-f3 --parent PrintMines-abc
+```
+
+**Review Verdict: FAIL ❌**
 
 ```
-5 tickets created:
-- CRITICAL (10/10): 1 ticket
-- MAJOR (7-9/10): 2 tickets
-- MODERATE (4-6/10): 2 tickets
+Review verdict: FAIL
 
-Review-summary: .agent/tasks/to-do/REVIEW-SUMMARY-2026-02-09-centauri-polling-fix.md
+Issues found:
+- 1 P0 (critical) ticket
+- 1 P1 (major) ticket
+- 1 P2 (moderate) ticket
 
-Next step: Address blocking issues and re-run check_review_status.rb
+Blocking tickets:
+- PrintMines-f1: Fix WebSocket timeout test failures
+- PrintMines-f2: Add YARD documentation to MonitorService
+- PrintMines-f3: Add error logging to exception handlers
+
+Original task (PrintMines-abc) keeps ready-for-review label but is now
+blocked by dependencies. Fix tickets appear in: bd ready
 ```
 
 ---
 
-## Example 2: Verification Review (Developer Fixed Issues)
+## Example 2: Verification After Fixes
 
-### Developer: "I fixed the critical issue, ready for re-review?"
+### Developer: "I fixed all the issues, ready for re-review?"
 
 **Step 1: Check review status**
 ```bash
 $ ruby scripts/check_review_status.rb
-📋 Found review-summary: REVIEW-SUMMARY-2026-02-09-centauri-polling-fix.md
 
-============================================================
+✅ Tasks Ready for Review (0)
 
-📝 Tickets from review:
-  1. ✅ CRITICAL-2026-02-09-add-thread-test-coverage.md (completed)
-  2. ❌ 7-2026-02-09-add-yard-documentation.md (exists)
-  3. ❌ 5-2026-02-09-improve-error-handling.md (exists)
-
-============================================================
-
-🚫 BLOCKING ISSUES REMAIN:
-   - CRITICAL-2026-02-09-add-thread-test-coverage.md
-
-❌ Review NOT complete - address blocking issues first
+⏳ Tasks Awaiting Fixes (1)
+  • PrintMines-abc: Add printer fleet monitoring
+    Blocked by:
+      ✅ PrintMines-f1: Fix WebSocket timeout test failures (closed)
+      ❌ PrintMines-f2: Add YARD documentation to MonitorService (open)
+      ✅ PrintMines-f3: Add error logging to exception handlers (closed)
 
 Next steps:
-  1. Implement tickets in .agent/tasks/to-do
-  2. Run tests to verify fixes
-  3. Re-run this check
+  1. Work on blocking tickets (they appear in: bd ready)
+  2. Re-run this check after closing blockers
 ```
 
-**Developer fixed it, but script shows "exists" because ticket is still in to-do/**
+**Developer fixes the remaining issue**
 
-**Step 2: Verify tests actually pass**
 ```bash
-$ bundle exec rails test test/services/printer_websocket_monitor_test.rb
-Running 10 tests in a single process
-..........
-
-Finished in 0.234s, 42.74 runs/s
-10 runs, 15 assertions, 0 failures, 0 errors, 0 skips
+$ bd close PrintMines-f2
 ```
 
-**Step 3: Move completed ticket to completed folder**
-```bash
-$ mv .agent/tasks/to-do/CRITICAL-2026-02-09-add-thread-test-coverage.md \
-     .agent/tasks/completed/
-```
+**Step 2: Check review status again**
 
-**Step 4: Re-check review status**
 ```bash
 $ ruby scripts/check_review_status.rb
-📋 Found review-summary: REVIEW-SUMMARY-2026-02-09-centauri-polling-fix.md
+
+✅ Tasks Ready for Review (1)
+  • PrintMines-abc: Add printer fleet monitoring
+
+⏳ Tasks Awaiting Fixes (0)
+
+Next steps:
+  ruby scripts/get_task_for_review.rb
+```
+
+**Step 3: Review the fixes**
+
+```bash
+$ ruby scripts/get_task_for_review.rb
+# Shows PrintMines-abc again
+
+$ bash scripts/review-suite.sh
+✅ All tests pass
+✅ No linting errors
+✅ No security issues
+```
+
+**Step 4: Approve the task**
+
+```bash
+$ ruby scripts/approve_task.rb PrintMines-abc
 
 ============================================================
-
-📝 Tickets from review:
-  1. ✅ CRITICAL-2026-02-09-add-thread-test-coverage.md (completed)
-  2. ❌ 7-2026-02-09-add-yard-documentation.md (exists)
-  3. ❌ 5-2026-02-09-improve-error-handling.md (exists)
-
+TASK APPROVED
 ============================================================
 
-✅ All blocking issues resolved!
+Closed: PrintMines-abc
+Added label: review-passed
 
-Moving review-summary to completed...
-✅ Moved: .agent/tasks/completed/REVIEW-SUMMARY-2026-02-09-centauri-polling-fix.md
-
-🎉 Code is ready for approval!
-
-Suggested next steps:
-  1. Run final test suite: bundle exec rails test
-  2. Verify all changes are committed
-  3. Create pull request or merge to main
+✓ Review passed! Task is complete.
+============================================================
 ```
 
 **Review Verdict: APPROVED ✅**
 
-Note: Non-blocking tickets (7, 5) can be addressed in follow-up work.
-
 ---
 
-## Example 3: Full Approval (No Issues)
+## Example 3: Full Approval (No Issues Found)
 
 ### Developer: "Can you review my well-tested feature?"
 
-**Step 1: Check for existing review**
+**Step 1: Check review status**
 ```bash
 $ ruby scripts/check_review_status.rb
-❌ No review-summary found in .agent/tasks/to-do
-Action: Perform a full code review
+
+✅ Tasks Ready for Review (1)
+  • PrintMines-xyz: Implement order sync scheduler
+
+⏳ Tasks Awaiting Fixes (0)
 ```
 
-**Step 2: Review uncommitted changes**
+**Step 2: Get task and review**
 ```bash
-$ ruby scripts/get_uncommitted_changes.rb
-[Shows changes...]
-```
+$ ruby scripts/get_task_for_review.rb
+# Shows PrintMines-xyz details
 
-**Step 3: Static analysis passes**
-```bash
 $ bash scripts/review-suite.sh
 ✅ RuboCop: 0 offenses
 ✅ Brakeman: 0 warnings
-✅ Tests: All passing
+✅ ESLint: 0 errors
+✅ Tests: All passing (42 runs, 0 failures)
 ```
 
-**Step 4: Manual review - everything looks good!**
+**Step 3: Manual review - everything looks good!**
 
 Agent verifies:
-- ✅ Tests cover new logic
-- ✅ YARD documentation present
-- ✅ Error handling appropriate
-- ✅ SOLID principles followed
-- ✅ No security issues
+- ✅ Tests cover new logic (schedule creation, error handling, edge cases)
+- ✅ YARD documentation present on all public methods
+- ✅ Error handling appropriate with proper logging
+- ✅ SOLID principles followed (single responsibility maintained)
+- ✅ No security issues (no SQL injection, proper input validation)
+
+**Step 4: Approve immediately**
+
+```bash
+$ ruby scripts/approve_task.rb PrintMines-xyz
+
+============================================================
+TASK APPROVED
+============================================================
+
+Closed: PrintMines-xyz
+Added label: review-passed
+
+✓ Review passed! Task is complete.
+============================================================
+```
 
 **Review Verdict: APPROVED ✅**
 
@@ -225,7 +290,7 @@ Agent verifies:
 ✅ Code Review: PASS
 
 Summary:
-- All tests pass (426 runs, 0 failures)
+- All tests pass (42 runs, 0 failures)
 - Test coverage added for new functionality
 - YARD documentation complete
 - No security vulnerabilities
@@ -234,32 +299,119 @@ Summary:
 
 🎉 Code is ready for merge/deployment!
 
-No tickets created - no issues found.
+No blocking issues found.
 ```
 
 ---
 
-## Example 4: Mixed Priority Issues
+## Example 4: Review Uncommitted Changes
 
-### Scenario: Some blocking, some non-blocking issues
+### Developer: "Can you review my uncommitted work?"
 
+**Step 1: Check uncommitted changes**
 ```bash
-$ ruby scripts/check_review_status.rb
-📋 Found review-summary: REVIEW-SUMMARY-2026-02-10-api-changes.md
+$ ruby scripts/get_uncommitted_changes.rb
 
-📝 Tickets from review:
-  1. ✅ CRITICAL-2026-02-10-add-authentication-tests.md (completed)
-  2. ✅ CRITICAL-2026-02-10-fix-sql-injection.md (completed)
-  3. ❌ 8-2026-02-10-add-rate-limiting.md (exists)
-  4. ❌ 5-2026-02-10-refactor-controller.md (exists)
-  5. ❌ 3-2026-02-10-improve-naming.md (exists)
-
+📊 Uncommitted Changes Summary
 ============================================================
 
-✅ All blocking issues resolved!
+Total files changed: 4
+  • Staged:    3
+  • Unstaged:  1
+  • Untracked: 0
+
+📁 By Category:
+  • Ruby: 2 files
+  • TypeScript: 1 files
+  • Tests: 1 files
+
+📝 Changed Files:
+------------------------------------------------------------
+  [S] app/services/order_sync_service.rb
+  [S] app/javascript/components/orders/SyncButton.tsx
+  [S] test/services/order_sync_service_test.rb
+  [M] app/models/order.rb
+
+✅ Ready for code review
 ```
 
-**Result:** Non-blocking tickets (8, 5, 3) remain, but they don't block approval. They can be addressed in follow-up work.
+**Step 2: Run static analysis and review**
+
+```bash
+$ bash scripts/review-suite.sh
+✅ All checks pass
+```
+
+**Manual review finds issue:**
+- ❌ New `sync_orders` method has no test coverage (P0)
+
+**Step 3: Create ticket (no formal task to block)**
+
+```bash
+$ bd create --title "Add test coverage for sync_orders method" \
+  --type test \
+  --priority 0 \
+  --description "New method Order#sync_orders has no test coverage" \
+  --acceptance "Add tests for success case, API failure, and timeout handling"
+
+Created PrintMines-t1
+```
+
+**Review Verdict: FAIL ❌**
+
+```
+Review verdict: FAIL
+
+Issues found:
+- 1 P0 (critical) ticket
+
+Tickets created:
+- PrintMines-t1: Add test coverage for sync_orders method
+
+Next steps:
+  1. Implement the test coverage
+  2. Re-request code review when complete
+```
+
+---
+
+## Example 5: Multiple Tasks Ready for Review
+
+**Step 1: Check review status**
+```bash
+$ ruby scripts/check_review_status.rb
+
+✅ Tasks Ready for Review (3)
+  • PrintMines-aaa: Add printer status dashboard
+  • PrintMines-bbb: Implement inventory tracking
+  • PrintMines-ccc: Fix order sync race condition
+
+⏳ Tasks Awaiting Fixes (1)
+  • PrintMines-ddd: Add user authentication
+    Blocked by:
+      ❌ PrintMines-f10: Add session timeout handling (open)
+```
+
+**Step 2: Get highest priority task**
+```bash
+$ ruby scripts/get_task_for_review.rb
+
+Found 3 tasks with ready-for-review label (showing highest priority):
+
+============================================================
+TASK READY FOR REVIEW
+============================================================
+
+ID: PrintMines-ccc
+Title: Fix order sync race condition
+Priority: 0 (critical)
+Status: open
+Labels: ready-for-review, bug
+
+# ... task details ...
+```
+
+**Note:** The script automatically shows the highest priority task first.
 
 ---
 
@@ -270,41 +422,38 @@ Start: User requests code review
   |
   ├─> Run: check_review_status.rb
   |
-  ├─> Review-summary exists?
+  ├─> Tasks with ready-for-review label?
   │   |
-  │   ├─> YES: Parse tickets
+  │   ├─> YES: Any unblocked?
   │   │   |
-  │   │   ├─> All CRITICAL tickets completed?
-  │   │   │   |
-  │   │   │   ├─> YES: Move review-summary to completed/ ✅
-  │   │   │   │        Notify: "Code ready for approval!"
-  │   │   │   │
-  │   │   │   └─> NO: Report remaining blocking issues ❌
-  │   │   │           Notify: "Fix CRITICAL tickets first"
+  │   │   ├─> YES: Get task with get_task_for_review.rb
+  │   │   │        Run static analysis (review-suite.sh)
+  │   │   │        Perform manual review
+  │   │   │        |
+  │   │   │        ├─> Issues found?
+  │   │   │        │   |
+  │   │   │        │   ├─> YES: Create tickets (bd create)
+  │   │   │        │   │        Add dependencies (bd dep add)
+  │   │   │        │   │        Keep ready-for-review label
+  │   │   │        │   │        → FAIL ❌
+  │   │   │        │   │
+  │   │   │        │   └─> NO: Approve (approve_task.rb)
+  │   │   │        │           Close task + add review-passed
+  │   │   │        │           → PASS ✅
+  │   │   │        │
+  │   │   │        └─> End
   │   │   │
-  │   │   └─> End
+  │   │   └─> NO: All tasks blocked by dependencies
+  │   │            Show what's blocking them
+  │   │            Next: Fix blocking tickets
+  │   │            → WAITING ⏳
   │   │
-  │   └─> NO: Continue to full review
+  │   └─> NO: Check uncommitted changes
+  │            get_uncommitted_changes.rb
+  │            Review and create tickets as needed
+  │            (No formal task to block)
   │
-  ├─> Get changes to review
-  │   ├─> get_uncommitted_changes.rb (for uncommitted work)
-  │   └─> get_task_for_review.rb (for formal tasks)
-  │
-  ├─> Run static analysis
-  │   └─> review-suite.sh
-  │
-  ├─> Manual review
-  │   |
-  │   ├─> Issues found?
-  │   │   |
-  │   │   ├─> YES: Create tickets + review-summary ❌
-  │   │   │        File: REVIEW-SUMMARY-YYYY-MM-DD-*.md
-  │   │   │        Location: .agent/tasks/to-do/
-  │   │   │
-  │   │   └─> NO: Approve ✅
-  │   │           No review-summary needed
-  │   │
-  │   └─> End
+  └─> End
 ```
 
 ---
@@ -313,119 +462,206 @@ Start: User requests code review
 
 ### For Developers
 
-1. **Check review status before making changes**
-   - Prevents working on code that's already blocked by review
-   - Shows what needs to be fixed first
+1. **Check review status before starting work**
+   - See what's blocked by review findings
+   - Prioritize fixing P0/P1 blocking tickets
 
-2. **Move tickets to completed/ when done**
-   - Script checks ticket location to verify completion
-   - Tickets in to-do/ are considered "not done"
+2. **Close tickets when fixes are complete**
+   - Use `bd close <id>` to mark work done
+   - Original task automatically unblocks when all dependencies closed
 
-3. **Address CRITICAL tickets first**
-   - Only blocking tickets prevent approval
-   - Lower priority items can be follow-up
+3. **Use proper commit messages**
+   - Reference ticket IDs in commits: "Fix timeout handling (closes PrintMines-f1)"
 
 ### For Reviewers
 
 1. **Always start with check_review_status.rb**
    - Prevents duplicate reviews
-   - Verifies fixes instead of re-reviewing
+   - Shows which tasks are truly ready (unblocked)
+   - Identifies tasks waiting for fixes
 
-2. **Create detailed review-summaries**
-   - Include all ticket filenames (exact match)
-   - List blocking issues clearly
-   - Provide next steps
+2. **Use appropriate issue types**
+   - `bug` - Code defects, broken functionality
+   - `task` - Work items, improvements, refactoring
+   - `documentation` - Missing/incorrect docs
+   - `test` - Missing/inadequate test coverage
 
-3. **Be specific in ticket acceptance criteria**
-   - "Add 6 test cases" not "Add more tests"
-   - Include code examples where helpful
-   - Reference line numbers when pointing out issues
+3. **Set correct priorities**
+   - **P0 (0)**: Critical - security, data loss, no tests for core logic
+   - **P1 (1)**: Major - SOLID violations, missing docs on public APIs
+   - **P2 (2)**: Moderate - maintainability issues, complex methods
+   - **P3 (3)**: Standard - general improvements
+   - **P4 (4)**: Nit - style, naming, minor refactors
 
----
+4. **Create blocking dependencies correctly**
+   ```bash
+   # For each fix ticket, add as blocker to original task
+   bd dep add <original-task> <fix-ticket>
 
-## File Locations Quick Reference
+   # Optional: Link fix to original for context
+   bd update <fix-ticket> --parent <original-task>
+   ```
 
-```
-.agent/tasks/
-├── to-do/                    # Pending work
-│   ├── CRITICAL-*.md         # Blocking issues (10/10)
-│   ├── [7-9]-*.md           # Major issues
-│   ├── [4-6]-*.md           # Moderate issues
-│   ├── [1-3]-*.md           # Minor issues
-│   └── REVIEW-SUMMARY-*.md  # Active review needing fixes
-│
-├── ready-for-review/         # Formal tasks awaiting review
-│
-├── in-progress/              # Currently being worked on
-│
-├── completed/                # Finished work
-│   └── REVIEW-SUMMARY-*.md  # Approved reviews
-│
-└── archived/                 # Old/obsolete work
-```
+5. **Be specific in ticket descriptions**
+   - Bad: "Add more tests"
+   - Good: "Add tests for nil user case and timeout handling in UserService#authenticate"
+   - Include line numbers when pointing out specific issues
+   - Provide code examples or pseudocode when helpful
 
 ---
 
 ## Common Questions
 
-**Q: What if I fix issues but forget to move tickets?**
-A: The script will see them in `to-do/` and report "NOT complete". Move completed tickets to `completed/` folder.
+**Q: What happens to the ready-for-review label when I add blocking dependencies?**
 
-**Q: Can I fix non-blocking tickets later?**
-A: Yes! Only CRITICAL (10/10) tickets block approval. Others can be follow-up work.
+A: The label stays on the task, but it won't appear in `bd ready --label ready-for-review` until all blocking tickets are closed. This is automatic - you don't need to remove the label.
 
-**Q: What if I disagree with a ticket?**
-A: Discuss with reviewer. You can:
-1. Argue why it's not needed (comment in ticket)
-2. Downgrade priority (reviewer decision)
-3. Move to backlog (defer to later)
+**Q: Can I fix some issues and leave others for later?**
 
-**Q: How do I know which tickets are blocking?**
-A: CRITICAL tickets (10/10) are always blocking. Script checks for these.
+A: Yes! Close the tickets you've fixed. When you re-run `check_review_status.rb`, it will show which blockers remain. The original task stays blocked until all dependencies are resolved.
 
-**Q: What if ticket filenames don't match review-summary?**
-A: Script won't find them. Use exact filenames from review-summary.
+**Q: What if I disagree with a review finding?**
 
-**Q: Can I edit the review-summary?**
-A: Yes, but don't change ticket filenames. Script parses them for verification.
+A: Discuss with the reviewer. Options:
+1. Comment on the ticket explaining your position
+2. Ask reviewer to downgrade priority or close as won't-fix
+3. If it's truly not needed, reviewer can close the ticket
+
+**Q: How do I know which tickets are blocking a review?**
+
+A: Run `bd show <task-id>` to see the `blocked_by` list, or use `check_review_status.rb` which shows all blockers and their status.
+
+**Q: What's the difference between parent and blocking relationships?**
+
+A:
+- **Parent** (`--parent`): Organizational only, for context. Doesn't affect workflow.
+- **Blocking** (`bd dep add`): Workflow enforcement. Blocks task from appearing in `bd ready`.
+
+**Q: Can I have multiple tasks in review at once?**
+
+A: Yes! Each task independently tracks its own blocking dependencies. `check_review_status.rb` shows all tasks and their individual status.
 
 ---
 
-## Script Exit Codes
+## Beads Commands Quick Reference
 
-**check_review_status.rb:**
-- `0` - No review-summary found OR all blocking issues resolved
-- `1` - Blocking issues remain OR parse error
+### Finding Work
+```bash
+bd ready --label ready-for-review    # Tasks ready for review (unblocked)
+bd list --status open --label ready-for-review  # All review tasks (includes blocked)
+bd show <id>                          # Detailed view with dependencies
+```
 
-**get_uncommitted_changes.rb:**
-- `0` - Success (changes found or clean)
-- `1` - Not a git repo
+### Creating Issues
+```bash
+bd create --title "..." --type bug|task|documentation|test --priority 0-4
+```
 
-**get_task_for_review.rb:**
-- `0` - Success (tasks found or none)
+### Dependencies
+```bash
+bd dep add <parent-id> <blocker-id>   # parent depends on blocker
+bd dep remove <parent-id> <blocker-id>  # Remove dependency
+```
+
+### Closing Tasks
+```bash
+bd close <id>                         # Close single task
+bd close <id1> <id2> <id3>           # Close multiple (more efficient)
+```
+
+### Updating Tasks
+```bash
+bd update <id> --parent <parent-id>   # Add parent relationship
+bd update <id> --parent ""            # Remove parent
+bd update <id> --add-label review-passed  # Add label
+```
 
 ---
 
 ## Integration with Other Skills
 
-**With task-implementer:**
+### With task-implementer
+
 ```bash
-# task-implementer picks a ticket from to-do/
-# After completion, marks ticket as done
-# Reviewer runs check_review_status.rb to verify
+# task-implementer picks next ready task
+$ ruby .agent/skills/task-implementer/scripts/start_next_task.rb
+
+# Implements the fix
+# Marks complete with ready-for-review label
+
+# Reviewer verifies
+$ ruby scripts/check_review_status.rb
 ```
 
-**With test-and-commit:**
+### With test-and-commit
+
 ```bash
-# After implementing fix, use test-and-commit
-# If tests pass, commit the changes
-# Then move ticket to completed/
-# Run check_review_status.rb
+# After implementing fix, run smart test runner
+$ ruby .agent/skills/test-and-commit/scripts/smart_test_runner.rb
+
+# If tests pass, commit and close ticket
+$ git commit -m "Fix timeout handling (closes PrintMines-f1)"
+$ bd close PrintMines-f1
 ```
 
-**With ticket-generator:**
+---
+
+## Script Behavior
+
+### check_review_status.rb
+
+**Shows:**
+- Tasks with `ready-for-review` label that are unblocked (ready NOW)
+- Tasks with `ready-for-review` label that are blocked (awaiting fixes)
+- For blocked tasks: what's blocking them and blocker status
+
+**Exit codes:**
+- `0` - Success (tasks found or none available)
+- Non-zero - Error
+
+### get_task_for_review.rb
+
+**Shows:**
+- All unblocked tasks with `ready-for-review` label
+- Highest priority task first
+- Full task details for review
+
+**Exit codes:**
+- `0` - Success (tasks found or none available)
+
+### approve_task.rb
+
+**Does:**
+- Closes the specified task
+- Adds `review-passed` label
+- Confirms approval
+
+**Usage:**
 ```bash
-# Reviewer creates tickets during review
-# ticket-generator can format them properly
-# All go to .agent/tasks/to-do/
+ruby scripts/approve_task.rb <task-id>
+# OR
+ruby scripts/approve_task.rb  # Prompts for highest priority task
 ```
+
+---
+
+## Labels Used
+
+### Workflow Labels
+- `ready-for-review` - Task awaits code review (may be blocked by dependencies)
+- `review-passed` - Code review approved, task closed
+
+### Type Labels (automatic from issue type)
+- `bug` - Defects and broken functionality
+- `task` - Work items and improvements
+- `documentation` - Documentation issues
+- `test` - Test coverage issues
+- `feature` - New features
+- `epic` - Large multi-task initiatives
+
+### Priority Labels (automatic from priority)
+- `critical` - P0 issues
+- `major` - P1 issues
+- `moderate` - P2 issues
+- Standard - P3 (no label)
+- Backlog - P4 (no label)
