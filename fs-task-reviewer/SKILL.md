@@ -39,7 +39,7 @@ This skill provides helper scripts that MUST be used instead of raw `bd` command
 - Race conditions (daemon overwrites your claim)
 - Wrong task selection (pick up review tasks by mistake)
 - Stale parent relationships (issues show as blocked)
-- Contradictory label states (review-finding + ready-for-review)
+- Inconsistent state (missing sync, wrong filters)
 
 ### ✅ CORRECT: Use These Scripts
 
@@ -193,7 +193,6 @@ Your final response should include:
 **For FAIL:**
 * Review verdict: FAIL
 * Number of tickets created by priority
-* Review-summary issue ID
 * List of blocking issues
 * Script command executed (if applicable)
 * Next steps for implementation agent
@@ -284,8 +283,8 @@ $ ruby scripts/approve_task.rb PROJ-abc
 ## **Key Principles**
 
 1. **Always check for existing review first** - Prevents duplicate work
-2. **Review-summary is the source of truth** - Tracks all issues found in a review
-3. **Blocking tickets must be resolved** - `blocks-approval` and `critical` labels block approval
+2. **Blocking dependencies control workflow** - Use `bd dep add` to prevent re-review until fixes complete
+3. **Use normal issue types** - Create bug/task/documentation tickets instead of special labels
 4. **Non-blocking tickets can be follow-up** - Lower priority items can be separate PRs
 5. **Verification is automated** - `check_review_status.rb` does the work
 
