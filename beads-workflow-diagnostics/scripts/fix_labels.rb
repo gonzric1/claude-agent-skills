@@ -6,13 +6,11 @@ require 'open3'
 
 # Fix label conflicts automatically
 #
-# Removes conflicting labels based on priority rules:
-# - If both 'ready-for-review' and 'review-finding' exist, remove 'review-finding'
+# Removes conflicting labels based on priority rules.
 
 class LabelFixer
   CONFLICT_RULES = {
-    # [keep_label, remove_label]
-    ['ready-for-review', 'review-finding'] => 'review-finding'
+    # No known conflict pairs currently
   }.freeze
 
   def initialize(dry_run: false)

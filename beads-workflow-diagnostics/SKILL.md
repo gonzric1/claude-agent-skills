@@ -18,7 +18,7 @@ Use this skill when experiencing beads workflow anomalies:
 ## Step-by-step instructions
 
 1. Run the main diagnostic: `ruby [[ @scripts/diagnose.rb ]]`
-   - Checks for label conflicts (ready-for-review + review-finding)
+   - Checks for label conflicts
    - Identifies orphaned parent relationships
    - Detects issues stuck in_progress with no recent activity
    - Finds circular dependencies
@@ -50,7 +50,7 @@ Use this skill when experiencing beads workflow anomalies:
 All fix scripts support `--dry-run` flag to preview changes.
 
 **Workflow Invariants Checked:**
-1. Issues with `ready-for-review` must not have `review-finding` label
+1. No incompatible label combinations
 2. Review issues must have valid parent references (not deleted/closed)
 3. Issues `in_progress` should have recent activity (last 24h)
 4. No circular dependencies
@@ -70,6 +70,6 @@ All fix scripts support `--dry-run` flag to preview changes.
 
 **Common Issues Found:**
 1. **Invalid Dependencies**: Issues referencing deleted/closed blockers - prevents proper `bd ready` calculation
-2. **Label Conflicts**: Incompatible labels like `ready-for-review` + `review-finding`
+2. **Label Conflicts**: Incompatible label combinations (currently none defined)
 3. **Orphaned Parents**: Review issues with parent_issue_id pointing to closed/deleted tasks
 4. **Ready Queue Mismatch**: Issues should be in `bd ready` but aren't (usually due to invalid dependencies)

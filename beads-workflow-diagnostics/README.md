@@ -65,7 +65,7 @@ This removes dependencies pointing to closed/deleted issues.
 
 The diagnostic verifies:
 
-1. ✅ **Label Conflicts**: No incompatible label combinations (e.g., `ready-for-review` + `review-finding`)
+1. ✅ **Label Conflicts**: No incompatible label combinations
 2. ✅ **Orphaned Parents**: Review issues only reference open parent issues
 3. ✅ **Stuck Issues**: No issues in_progress for >24h without updates
 4. ❌ **Valid Dependencies**: Dependencies only point to open issues
@@ -89,8 +89,7 @@ ruby scripts/fix_dependencies.rb
 
 ### fix_labels.rb
 
-Removes conflicting labels based on priority rules:
-- Keeps `ready-for-review`, removes `review-finding`
+Removes conflicting labels based on priority rules (currently none defined).
 
 ```bash
 ruby scripts/fix_labels.rb --dry-run

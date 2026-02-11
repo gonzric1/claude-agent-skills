@@ -9,7 +9,7 @@ require 'yaml'
 # Beads Workflow Diagnostic Tool
 #
 # Checks for workflow inconsistencies:
-# 1. Label conflicts (ready-for-review + review-finding)
+# 1. Label conflicts
 # 2. Orphaned parent relationships
 # 3. Stuck in_progress issues
 # 4. Circular dependencies
@@ -17,7 +17,7 @@ require 'yaml'
 
 class BeadsWorkflowDiagnostic
   LABEL_CONFLICT_PAIRS = [
-    ['ready-for-review', 'review-finding']
+    # No known conflict pairs currently
   ].freeze
 
   STUCK_THRESHOLD_HOURS = 24
@@ -260,10 +260,9 @@ class BeadsWorkflowDiagnostic
 
       no_assignee = issue['assignee'].nil? || issue['assignee'].empty?
       labels = issue['labels'] || []
-      not_review_finding = !labels.include?('review-finding')
       not_ready_for_review = !labels.include?('ready-for-review')
 
-      status_ok && no_blockers && no_assignee && not_review_finding && not_ready_for_review
+      status_ok && no_blockers && no_assignee && not_ready_for_review
     end
 
     # Find discrepancies
