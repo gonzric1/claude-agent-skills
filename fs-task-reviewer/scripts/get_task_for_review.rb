@@ -59,6 +59,11 @@ end
 first_task = tasks.first
 task_id = first_task['id']
 
+# Claim the task to prevent other reviewers from picking it up
+puts "\nClaiming task: #{task_id}"
+run_bd("update #{task_id} --status in_progress")
+run_bd("sync")
+
 # Set tmux pane title to show task being reviewed
 if ENV['TMUX']
   pane_title = "REVIEWING: #{first_task['title'][0..50]}".gsub("'", "")
@@ -67,7 +72,9 @@ if ENV['TMUX']
   system("tmux set-option -p automatic-rename off")
 end
 
-puts "\nReviewing first task: #{task_id}"
+puts "Reviewing task: #{task_id}"
 puts "\n--- Task Content ---"
 puts run_bd("show #{task_id}")
 puts "--------------------"
+puts "\n⚠️  IMPORTANT: Review ONLY this task. Do not pick up additional tasks."
+puts "After completing this review, run approve_task.rb or create blocking tickets."

@@ -83,6 +83,10 @@ ruby [[ @scripts/check_review_status.rb ]]
 
 If tasks are ready for review, perform a comprehensive code review.
 
+**⚠️ CRITICAL: Review ONE Task Only**
+
+The fs-task-reviewer skill is designed to review **exactly ONE task per invocation**. Do not attempt to review multiple tasks in a single session. After completing one review, the skill should exit.
+
 ### **1. Get Changes for Review**
 
 You can review either:
@@ -96,8 +100,12 @@ ruby [[ @scripts/get_task_for_review.rb ]]
 
 This will:
 * List all tasks with `ready-for-review` label
-* Show the highest priority task first
+* Select the highest priority task
+* **CLAIM the task** (set status to `in_progress`) to prevent other reviewers from picking it up
+* Sync with remote immediately (via `bd sync`)
 * Display the task content for review
+
+**After claiming, you MUST review only this task and stop.**
 
 **Option B - Review Uncommitted Changes:**
 ```bash
@@ -150,9 +158,11 @@ After completing your review, you must take one of two actions:
 
 **For specific tasks with ready-for-review label:**
 ```bash
-ruby [[ @scripts/approve_task.rb ]] <optional_task_id>
+ruby [[ @scripts/approve_task.rb ]] <task_id>
 ```
 This closes the task and adds `review-passed` label.
+
+**Note:** You must provide the task ID that was claimed by `get_task_for_review.rb`.
 
 **For uncommitted changes:**
 Simply provide approval message. No script needed.
@@ -189,6 +199,7 @@ Your final response should include:
 * Summary of what was reviewed
 * Script command executed (if applicable)
 * Confirmation that code is ready for merge/deploy
+* **EXIT** - Do not review additional tasks
 
 **For FAIL:**
 * Review verdict: FAIL
@@ -196,6 +207,7 @@ Your final response should include:
 * List of blocking issues
 * Script command executed (if applicable)
 * Next steps for implementation agent
+* **EXIT** - Do not review additional tasks
 
 ---
 
@@ -282,11 +294,13 @@ $ ruby scripts/approve_task.rb PROJ-abc
 
 ## **Key Principles**
 
-1. **Always check for existing review first** - Prevents duplicate work
-2. **Blocking dependencies control workflow** - Use `bd dep add` to prevent re-review until fixes complete
-3. **Use normal issue types** - Create bug/task/documentation tickets instead of special labels
-4. **Non-blocking tickets can be follow-up** - Lower priority items can be separate PRs
-5. **Verification is automated** - `check_review_status.rb` does the work
+1. **Review ONE task only** - Never review multiple tasks in a single session
+2. **Always check for existing review first** - Prevents duplicate work
+3. **Claiming prevents conflicts** - `get_task_for_review.rb` automatically claims the task
+4. **Blocking dependencies control workflow** - Use `bd dep add` to prevent re-review until fixes complete
+5. **Use normal issue types** - Create bug/task/documentation tickets instead of special labels
+6. **Non-blocking tickets can be follow-up** - Lower priority items can be separate PRs
+7. **Verification is automated** - `check_review_status.rb` does the work
 
 ---
 
