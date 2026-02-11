@@ -17,18 +17,25 @@ if doc_file.nil? || doc_file.empty?
   exit 1
 end
 
-unless File.exist?(doc_file)
+# Use working directory (where script is invoked) as project root
+# This works correctly with symlinked skills
+project_root = Dir.pwd
+
+# Now resolve the file path
+# For relative paths, this resolves from current directory (project root)
+# For absolute paths, this returns the absolute path unchanged
+resolved_path = File.expand_path(doc_file, project_root)
+
+unless File.exist?(resolved_path)
   puts "❌ Error: File not found: #{doc_file}"
+  puts "   (resolved to: #{resolved_path})"
   exit 1
 end
-
-project_root = File.expand_path("../../../../", __dir__)
-Dir.chdir(project_root)
 
 puts "🔍 Validating documentation: #{doc_file}"
 puts ""
 
-content = File.read(doc_file)
+content = File.read(resolved_path)
 errors = []
 warnings = []
 
