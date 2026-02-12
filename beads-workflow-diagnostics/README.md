@@ -8,12 +8,15 @@ Diagnoses and fixes inconsistencies in beads workflow where `bd ready` shows iss
 # 1. Run diagnostic
 ruby scripts/diagnose.rb
 
-# 2. Fix issues automatically
+# 2. Fix issues automatically (creates audit logs)
 ruby scripts/fix_dependencies.rb
 ruby scripts/fix_labels.rb
 ruby scripts/fix_parents.rb
 
-# 3. Sync changes
+# 3. View audit log to see what was fixed
+ruby scripts/view_audit_logs.rb
+
+# 4. Sync changes
 bd sync
 ```
 
@@ -125,24 +128,63 @@ git status
 - Doesn't reflect actual agent activity
 - False positives if agents haven't committed recent work
 
+## Audit Logging
+
+All fix scripts create comprehensive audit logs in `.agent/logs/beads-diagnostics/`:
+
+- **Format**: JSONL (one JSON object per line)
+- **Content**: What changed, why it changed, before/after state
+- **History**: bd comments and git history for each affected bead
+- **Tracking**: Success/failure status for each fix
+
+### View Audit Logs
+
+```bash
+# Show latest log with full details
+ruby scripts/view_audit_logs.rb
+
+# Show all historical logs
+ruby scripts/view_audit_logs.rb --all
+
+# Show logs for a specific issue
+ruby scripts/view_audit_logs.rb --issue PrintMines-123
+
+# Detailed view of all logs
+ruby scripts/view_audit_logs.rb --all --verbose
+```
+
+Each log entry includes:
+- Issue ID and title
+- Problem detected
+- Action taken
+- Before/after state (status, labels, dependencies)
+- bd comments on the issue
+- Git commits mentioning the issue
+- Success/failure result
+
 ## After Running Fixes
 
-1. Verify fixes worked:
+1. View audit log to understand what changed:
+   ```bash
+   ruby scripts/view_audit_logs.rb
+   ```
+
+2. Verify fixes worked:
    ```bash
    ruby scripts/diagnose.rb
    ```
 
-2. Check `bd ready` now shows correct issues:
+3. Check `bd ready` now shows correct issues:
    ```bash
    bd ready
    ```
 
-3. Sync changes to remote:
+4. Sync changes to remote:
    ```bash
    bd sync
    ```
 
-4. Agents should now find work:
+5. Agents should now find work:
    - `task-implementer` skill should pick up implementation tasks
    - `fs-task-reviewer` skill should pick up review tasks
 
@@ -198,8 +240,18 @@ Dependencies stored as array in `bd export`:
 - `closed` - Completed/rejected issue
 - `in_progress` - Currently being worked (not used in this diagnostic)
 
+## Scripts
+
+- **diagnose.rb** - Main diagnostic script
+- **fix_dependencies.rb** - Auto-fix invalid dependencies (with audit logging)
+- **fix_labels.rb** - Auto-fix label conflicts (with audit logging)
+- **fix_parents.rb** - Auto-fix orphaned parent relationships (with audit logging)
+- **check_and_fix.rb** - All-in-one auto-fix (called by skill)
+- **audit_logger.rb** - Comprehensive logging module (used by all fix scripts)
+- **view_audit_logs.rb** - View and analyze audit logs
+
 ## Exit Codes
 
-- `0` - No issues detected, workflow is healthy
+- `0` - No issues detected, workflow is healthy (or fixes successfully applied)
 - `1` - Issues detected (see output for details)
 - `2` - Script error (failed to run bd commands)

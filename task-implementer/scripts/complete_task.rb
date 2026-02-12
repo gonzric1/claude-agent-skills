@@ -83,3 +83,24 @@ puts "  - Status: open"
 puts "  - Added label: ready-for-review"
 puts ""
 puts "The task will be picked up by fs-task-reviewer for code review."
+
+# Count remaining ready tasks (excluding ready-for-review)
+output = run_bd("ready --json")
+all_tasks = parse_json(output)
+remaining_tasks = all_tasks.reject do |t|
+  labels = t['labels'] || []
+  labels.include?('ready-for-review')
+end
+
+if remaining_tasks.any?
+  puts ""
+  puts "📋 #{remaining_tasks.length} task#{remaining_tasks.length == 1 ? '' : 's'} remaining to implement:"
+  remaining_tasks[0..4].each do |t|
+    priority = t['priority'] || 3
+    puts "  - #{t['id']}: #{t['title']} (P#{priority})"
+  end
+  puts "  ... and #{remaining_tasks.length - 5} more" if remaining_tasks.length > 5
+else
+  puts ""
+  puts "✨ No more tasks ready to implement!"
+end

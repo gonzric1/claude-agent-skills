@@ -48,7 +48,8 @@ puts "=" * 70
 puts ""
 
 # Find all tasks with ready-for-review label (both blocked and unblocked)
-all_output = run_bd("list --status open --label ready-for-review --json")
+# Unclaimed tasks have status=open, claimed (being reviewed) have status=in_progress
+all_output = run_bd("list --label ready-for-review --json")
 all_review_tasks = parse_json(all_output)
 
 if all_review_tasks.empty?
@@ -77,8 +78,9 @@ if all_review_tasks.empty?
 end
 
 # Check which are actually unblocked (ready for review NOW)
-ready_output = run_bd("ready --label ready-for-review --json")
-ready_tasks = parse_json(ready_output)
+# NOTE: Can't use 'bd ready' because it filters out tasks with owners
+# Instead, manually filter for tasks with no dependencies
+ready_tasks = all_review_tasks.select { |t| (t['dependency_count'] || 0) == 0 }
 
 ready_ids = ready_tasks.map { |t| t['id'] }
 blocked_tasks = all_review_tasks.reject { |t| ready_ids.include?(t['id']) }

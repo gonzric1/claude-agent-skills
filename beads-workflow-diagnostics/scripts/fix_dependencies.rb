@@ -3,6 +3,7 @@
 
 require 'json'
 require 'open3'
+require_relative 'audit_logger'
 
 # Fix invalid dependency references
 #
@@ -14,6 +15,7 @@ class DependencyFixer
     @issues = []
     @all_issues = []
     @fixed = []
+    @logger = AuditLogger.new('fix_dependencies') unless dry_run
   end
 
   def run
@@ -25,6 +27,8 @@ class DependencyFixer
     load_issues
     fix_invalid_dependencies
     print_summary
+
+    @logger&.finalize
 
     exit(@fixed.any? ? 0 : 1)
   end
@@ -43,10 +47,10 @@ class DependencyFixer
     # Parse JSONL (one JSON object per line)
     @all_issues = output.lines.map { |line| JSON.parse(line.strip) }
 
-    # Filter to open issues
-    @issues = @all_issues.select { |i| i['status'] == 'open' }
+    # Filter to open and in_progress issues (both can have dependencies)
+    @issues = @all_issues.select { |i| i['status'] == 'open' || i['status'] == 'in_progress' }
 
-    puts "✓ (#{@issues.size} open issues, #{@all_issues.size} total)"
+    puts "✓ (#{@issues.size} open/in_progress issues, #{@all_issues.size} total)"
   rescue JSON::ParserError => e
     puts "❌ Failed to parse bd export output: #{e.message}"
     exit 2
@@ -61,7 +65,7 @@ class DependencyFixer
 
       invalid_blockers = blocked_by.reject do |blocker_id|
         blocker = @all_issues.find { |i| i['id'] == blocker_id }
-        blocker && blocker['status'] == 'open'
+        blocker && (blocker['status'] == 'open' || blocker['status'] == 'in_progress')
       end
 
       next if invalid_blockers.empty?
@@ -70,18 +74,36 @@ class DependencyFixer
       puts "   Title: #{issue['title']}"
       puts "   Invalid blockers: #{invalid_blockers.join(', ')}"
 
-      invalid_blockers.each do |blocker_id|
+      blocker_details = invalid_blockers.map do |blocker_id|
         blocker = @all_issues.find { |i| i['id'] == blocker_id }
         status = blocker ? "closed (#{blocker['status']})" : 'deleted'
         puts "      - #{blocker_id}: #{status}"
+        { blocker_id: blocker_id, status: status }
       end
 
       puts "   Action: Remove dependencies"
 
+      # Log the fix
+      @logger&.log_fix(
+        issue_id: issue['id'],
+        issue_title: issue['title'],
+        problem: "Invalid dependency references to closed/deleted issues",
+        action: "Remove #{invalid_blockers.size} invalid blocker(s): #{invalid_blockers.join(', ')}",
+        details: {
+          invalid_blockers: blocker_details,
+          blocker_count: invalid_blockers.size
+        }
+      )
+
       if @dry_run
         puts "   [DRY RUN - no changes made]"
       else
-        remove_dependencies(issue['id'], invalid_blockers)
+        success = remove_dependencies(issue['id'], invalid_blockers)
+        @logger&.log_fix_result(
+          issue_id: issue['id'],
+          success: success,
+          message: success ? "Successfully removed #{invalid_blockers.size} dependency(ies)" : "Failed to remove some dependencies"
+        )
       end
 
       @fixed << issue['id']
@@ -91,6 +113,7 @@ class DependencyFixer
   end
 
   def remove_dependencies(issue_id, blocker_ids)
+    all_success = true
     blocker_ids.each do |blocker_id|
       cmd = "bd dep remove #{issue_id} #{blocker_id}"
       output, status = run_command(cmd)
@@ -99,8 +122,10 @@ class DependencyFixer
         puts "   ✓ Removed dependency on #{blocker_id}"
       else
         puts "   ❌ Failed to remove dependency: #{output}"
+        all_success = false
       end
     end
+    all_success
   end
 
   def run_command(cmd)

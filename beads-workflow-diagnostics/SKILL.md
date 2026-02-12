@@ -39,6 +39,11 @@ Use this skill when experiencing beads workflow anomalies:
 
 4. Verify fix with `bd ready` and rerun diagnostic
 
+5. View audit logs to understand what changed:
+   - `ruby [[ @scripts/view_audit_logs.rb ]]` - View latest log with full details
+   - `ruby [[ @scripts/view_audit_logs.rb ]] --all` - View all historical logs
+   - `ruby [[ @scripts/view_audit_logs.rb ]] --issue <id>` - View logs for specific issue
+
 ## Technical Details
 
 **Scripts:**
@@ -46,8 +51,26 @@ Use this skill when experiencing beads workflow anomalies:
 - `fix_dependencies.rb` - Removes dependencies pointing to closed/deleted issues (most common fix)
 - `fix_labels.rb` - Fixes label conflicts automatically
 - `fix_parents.rb` - Removes orphaned parent relationships
+- `audit_logger.rb` - Comprehensive logging module (used by fix scripts)
+- `view_audit_logs.rb` - View audit logs from previous fixes
 
 All fix scripts support `--dry-run` flag to preview changes.
+
+**Audit Logging:**
+All fix scripts now create comprehensive audit logs in `.agent/logs/beads-diagnostics/`:
+- JSONL format (one JSON object per line)
+- Captures what changed, why it changed, and the history of affected beads
+- Includes before/after state of each issue
+- Records bd comments and git history for each affected bead
+- Timestamp and success/failure tracking
+
+View logs:
+```bash
+ruby scripts/view_audit_logs.rb                     # Show latest log
+ruby scripts/view_audit_logs.rb --all               # Show all logs
+ruby scripts/view_audit_logs.rb --issue PrintMines-123  # Logs for specific issue
+ruby scripts/view_audit_logs.rb --all --verbose     # Detailed view of all logs
+```
 
 **Workflow Invariants Checked:**
 1. No incompatible label combinations
@@ -73,3 +96,22 @@ All fix scripts support `--dry-run` flag to preview changes.
 2. **Label Conflicts**: Incompatible label combinations (currently none defined)
 3. **Orphaned Parents**: Review issues with parent_issue_id pointing to closed/deleted tasks
 4. **Ready Queue Mismatch**: Issues should be in `bd ready` but aren't (usually due to invalid dependencies)
+
+**Audit Log Format:**
+Each fix creates a JSONL log file with entries:
+- `session_start`: Fix session metadata (fix type, timestamp)
+- Fix entries: One per issue fixed, includes:
+  - `issue_id`, `issue_title`: What was fixed
+  - `problem`: Why it needed fixing
+  - `action`: What action was taken
+  - `details`: Additional context (e.g., which labels removed)
+  - `before_state`: Issue state before fix (status, labels, dependencies)
+  - `after_state`: Issue state after fix
+  - `history`: Comprehensive bead history:
+    - `comments`: bd comments on the issue
+    - `git_log`: git commits mentioning the issue
+    - `bd_show`: Full issue details from bd
+- `result` entries: Success/failure of each fix
+- `summary`: Session summary (total fixes, successes, failures, issues affected)
+
+Logs are persisted to `.agent/logs/beads-diagnostics/` and committed to git for historical analysis.

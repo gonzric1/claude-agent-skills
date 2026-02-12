@@ -24,13 +24,13 @@ This skill provides helper scripts that MUST be used instead of raw `bd` command
 **NEVER run these directly:**
 - `bd update <id> --status in_progress` → Use `start_next_task.rb`
 - `bd update <id> --add-label ready-for-review` → Use `complete_task.rb`
-- `bd close <id>` → Use appropriate completion/approval script
-- `bd create` for findings → Use reviewer workflow scripts
+- `bd close <id>` → Use `close_task.rb` (cleans up dependencies)
+- `bd create` for review findings → Use `fs-task-reviewer/scripts/create_fix_ticket.rb`
 
 **Consequences of bypassing:**
 - Race conditions (daemon overwrites your claim)
 - Wrong task selection (pick up review tasks by mistake)
-- Stale parent relationships (issues show as blocked)
+- **Stale dependencies** (parent tasks stay blocked after fix tickets close)
 - Inconsistent state (missing sync, wrong filters)
 
 ### ✅ CORRECT: Use These Scripts
@@ -115,6 +115,29 @@ This adds the `ready-for-review` label to the task. The `fs-task-reviewer` skill
 | P3 | `ticket` | Standard feature work |
 | P4 | `nit` | Style, naming, minor refactors |
 
+### 4. Closing Fix Tickets
+
+When completing fix tickets (created by fs-task-reviewer), use the close script:
+
+```bash
+ruby [[ @scripts/close_task.rb ]] <task_id>
+```
+
+**Why use this script instead of `bd close`:**
+- Automatically removes dependencies pointing to the closed task
+- Unblocks parent tasks that were waiting for this fix
+- Syncs changes immediately
+
+**Example:**
+```bash
+# Fix ticket PROJ-fix1 was blocking PROJ-parent
+$ ruby scripts/close_task.rb PROJ-fix1
+✓ Closed PROJ-fix1
+Cleaning up dependencies...
+  ✓ PROJ-parent no longer blocked by PROJ-fix1
+✓ Changes synced
+```
+
 ## Useful Commands
 
 ```bash
@@ -132,4 +155,7 @@ bd show <task-id>
 
 # Add dependency between tasks
 bd dep add <blocked-task> <blocker-task>
+
+# Close a task (use script to clean up dependencies)
+ruby .agent/skills/task-implementer/scripts/close_task.rb <task-id>
 ```

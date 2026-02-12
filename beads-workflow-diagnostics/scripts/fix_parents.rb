@@ -4,6 +4,7 @@
 require 'json'
 require 'open3'
 require 'yaml'
+require_relative 'audit_logger'
 
 # Fix orphaned parent relationships
 #
@@ -15,6 +16,7 @@ class ParentFixer
     @issues = []
     @all_issues = []
     @fixed = []
+    @logger = AuditLogger.new('fix_parents') unless dry_run
   end
 
   def run
@@ -26,6 +28,8 @@ class ParentFixer
     load_issues
     fix_orphaned_parents
     print_summary
+
+    @logger&.finalize
 
     exit(@fixed.any? ? 0 : 1)
   end
@@ -79,10 +83,26 @@ class ParentFixer
         puts "   Parent: #{parent_id} (#{reason})"
         puts "   Action: Remove parent_issue_id metadata"
 
+        @logger&.log_fix(
+          issue_id: issue['id'],
+          issue_title: issue['title'],
+          problem: "Orphaned parent relationship - parent #{reason}",
+          action: "Remove parent_issue_id metadata pointing to #{parent_id}",
+          details: {
+            parent_issue_id: parent_id,
+            parent_status: reason
+          }
+        )
+
         if @dry_run
           puts "   [DRY RUN - no changes made]"
         else
-          remove_parent_metadata(issue['id'])
+          success = remove_parent_metadata(issue['id'])
+          @logger&.log_fix_result(
+            issue_id: issue['id'],
+            success: success,
+            message: success ? "Removed parent_issue_id metadata" : "Failed to remove metadata"
+          )
         end
 
         @fixed << issue['id']
@@ -98,7 +118,7 @@ class ParentFixer
 
     unless File.exist?(issue_file)
       puts "   ❌ Issue file not found: #{issue_file}"
-      return
+      return false
     end
 
     issue_data = YAML.load_file(issue_file)
@@ -113,11 +133,14 @@ class ParentFixer
       # Commit the change
       run_command("git add #{issue_file}")
       run_command("git commit -m 'fix: remove orphaned parent_issue_id from #{issue_id}'")
+      true
     else
       puts "   ⚠️  No parent_issue_id found in metadata"
+      false
     end
   rescue => e
     puts "   ❌ Failed to fix: #{e.message}"
+    false
   end
 
   def run_command(cmd)

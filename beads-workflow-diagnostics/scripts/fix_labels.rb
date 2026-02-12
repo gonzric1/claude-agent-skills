@@ -3,6 +3,7 @@
 
 require 'json'
 require 'open3'
+require_relative 'audit_logger'
 
 # Fix label conflicts automatically
 #
@@ -65,6 +66,7 @@ class LabelFixer
     @dry_run = dry_run
     @issues = []
     @fixed = []
+    @logger = AuditLogger.new('fix_labels') unless dry_run
   end
 
   def run
@@ -77,6 +79,8 @@ class LabelFixer
     fix_conflicts
     remove_invalid_labels
     print_summary
+
+    @logger&.finalize
 
     exit(@fixed.any? ? 0 : 1)
   end
@@ -118,10 +122,27 @@ class LabelFixer
         puts "   Labels: #{labels.join(', ')}"
         puts "   Action: Remove '#{label_to_remove}'"
 
+        @logger&.log_fix(
+          issue_id: issue['id'],
+          issue_title: issue['title'],
+          problem: "Label conflict: has both '#{keep}' and '#{remove}'",
+          action: "Remove conflicting label '#{label_to_remove}'",
+          details: {
+            conflicting_labels: [keep, remove],
+            label_to_remove: label_to_remove,
+            all_labels: labels
+          }
+        )
+
         if @dry_run
           puts "   [DRY RUN - no changes made]"
         else
-          remove_label(issue['id'], label_to_remove)
+          success = remove_label(issue['id'], label_to_remove)
+          @logger&.log_fix_result(
+            issue_id: issue['id'],
+            success: success,
+            message: success ? "Removed label '#{label_to_remove}'" : "Failed to remove label"
+          )
         end
 
         @fixed << issue['id']
@@ -153,12 +174,28 @@ class LabelFixer
       puts "   Invalid/obsolete: #{to_remove.join(', ')}"
       puts "   Action: Remove #{to_remove.size} label(s)"
 
+      @logger&.log_fix(
+        issue_id: issue['id'],
+        issue_title: issue['title'],
+        problem: "Invalid/obsolete labels found",
+        action: "Remove #{to_remove.size} invalid label(s): #{to_remove.join(', ')}",
+        details: {
+          invalid_labels: to_remove,
+          all_labels: labels,
+          allowed_labels: ALLOWED_LABELS
+        }
+      )
+
       if @dry_run
         puts "   [DRY RUN - no changes made]"
       else
-        to_remove.each do |label|
-          remove_label(issue['id'], label)
-        end
+        successes = to_remove.map { |label| remove_label(issue['id'], label) }
+        all_success = successes.all?
+        @logger&.log_fix_result(
+          issue_id: issue['id'],
+          success: all_success,
+          message: all_success ? "Removed #{to_remove.size} label(s)" : "Failed to remove some labels"
+        )
       end
 
       @fixed << issue['id'] unless @fixed.include?(issue['id'])
@@ -173,8 +210,10 @@ class LabelFixer
 
     if status.success?
       puts "   ✓ Removed label '#{label}'"
+      true
     else
       puts "   ❌ Failed to remove label: #{output}"
+      false
     end
   end
 

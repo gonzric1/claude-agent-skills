@@ -34,7 +34,7 @@ This skill provides helper scripts that MUST be used instead of raw `bd` command
 - `bd update <id> --status in_progress` → Use `start_next_task.rb`
 - `bd update <id> --add-label ready-for-review` → Use `complete_task.rb`
 - `bd close <id>` → Use appropriate completion/approval script
-- `bd create` for findings → Use reviewer workflow scripts
+- `bd create` for review findings → Use `create_fix_ticket.rb` (enforces parent relationship)
 
 **Consequences of bypassing:**
 - Race conditions (daemon overwrites your claim)
@@ -84,9 +84,13 @@ ruby [[ @scripts/check_review_status.rb ]]
 
 If tasks are ready for review, perform a comprehensive code review.
 
-**⚠️ CRITICAL: Review ONE Task Only**
+**⚠️ CRITICAL: Review ONE CLUSTER Only**
 
-The fs-task-reviewer skill is designed to review **exactly ONE task per invocation**. Do not attempt to review multiple tasks in a single session. After completing one review, the skill should exit.
+The fs-task-reviewer skill reviews **task clusters** - a parent task plus its children (fix tickets from previous reviews). This prevents duplicate ticket creation by showing all related work together.
+
+- **Cluster size**: Up to 5 tasks by default, expandable to 10
+- **Clustering**: Parent task + all children with `ready-for-review` label
+- Do not attempt to review multiple unrelated clusters in a single session
 
 ### **1. Get Changes for Review**
 
@@ -129,15 +133,21 @@ This will:
 
 ### **3. The Triage Phase**
 
-For every issue found, create a normal beads ticket (bug, task, etc.):
+For every issue found, use the `create_fix_ticket.rb` script:
 
 ```bash
-bd create --title "Fix TypeScript error in UserLogin" \
+ruby [[ @scripts/create_fix_ticket.rb ]] <reviewed-task-id> \
+  --title "Fix TypeScript error in UserLogin" \
   --type bug \
   --priority <0-4> \
   --description "Detailed description of the issue" \
   --acceptance "What must be done to resolve this"
 ```
+
+**This script automatically:**
+- Sets `--parent` to link fix ticket to reviewed task
+- Adds blocking dependency (reviewed task blocked until fix complete)
+- Syncs to prevent race conditions
 
 **Choose appropriate issue type:**
 * `bug` - Code defects, errors, broken functionality
@@ -171,26 +181,26 @@ Simply provide approval message. No script needed.
 
 #### **If the code has issues** (failed tests, SOLID violations, missing docs, etc.):
 
-1. **Create tickets for each issue** (as described in Step 3 - use normal bug/task types)
-
-2. **Add blocking dependencies** to prevent re-review until fixes are done:
+1. **Create fix tickets using the script** (handles parent + dependency automatically):
 ```bash
-# For each ticket created, add it as a blocker to the original task
-bd dep add <original-task-id> <new-ticket-id>
+ruby [[ @scripts/create_fix_ticket.rb ]] <original-task-id> \
+  --title "Fix issue" --type bug --priority 1 \
+  --description "..." --acceptance "..."
+# Output:
+#   ✓ Created: PROJ-fix1
+#   ✓ PROJ-abc is now blocked by PROJ-fix1
 ```
 
-3. **(Optional) Add parent relationship** for context:
-```bash
-# Link tickets to original task for context
-bd update <new-ticket-id> --parent <original-task-id>
-```
+2. **That's it!** The script automatically:
+   - Sets parent relationship (enables cluster reviews)
+   - Adds blocking dependency (prevents re-review until fixed)
+   - Syncs changes
 
-4. **That's it!** The original task keeps its `ready-for-review` label, but:
-   - Won't appear in `bd ready --label ready-for-review` (blocked by dependencies)
+The original task keeps its `ready-for-review` label, but:
+   - Won't appear as ready for review (blocked by dependencies)
    - When fix tickets are closed, automatically unblocks
    - Task implementer can pick up fix tickets immediately (they appear in `bd ready`)
-
-*Note: No need to remove `ready-for-review` label or add `review-failed` label - blocking dependencies handle the workflow automatically.*
+   - **Next review will show parent + all children as a cluster**
 
 ### **5. Output Format**
 
@@ -223,9 +233,11 @@ $ ruby scripts/check_review_status.rb
 ✅ Tasks Ready for Review (1)
   • PROJ-abc: Feature X implementation
 
-# Step 2: Get task for review
+# Step 2: Get task cluster for review
 $ ruby scripts/get_task_for_review.rb
-Reviewing: PROJ-abc
+📦 Review Cluster (1 task):
+  Parent: PROJ-abc - Feature X implementation
+  Children: (none yet)
 [Task details displayed]
 
 # Step 3: Run static analysis
@@ -235,28 +247,23 @@ $ bash scripts/review-suite.sh
 # Step 4: Perform manual review
 [Agent reviews code, finds issues]
 
-# Step 5: Create normal tickets for issues found
-$ bd create "Add test coverage for new feature" --type task --priority 0
-Created PROJ-f1
+# Step 5: Create fix tickets using script (handles parent + deps automatically)
+$ ruby scripts/create_fix_ticket.rb PROJ-abc --title "Add test coverage" --type task --priority 0
+✓ Created: PROJ-f1
+✓ PROJ-abc is now blocked by PROJ-f1
 
-$ bd create "Add YARD documentation" --type documentation --priority 1
-Created PROJ-f2
+$ ruby scripts/create_fix_ticket.rb PROJ-abc --title "Add YARD documentation" --type documentation --priority 1
+✓ Created: PROJ-f2
+✓ PROJ-abc is now blocked by PROJ-f2
 
-$ bd create "Improve error handling" --type bug --priority 2
-Created PROJ-f3
+$ ruby scripts/create_fix_ticket.rb PROJ-abc --title "Improve error handling" --type bug --priority 2
+✓ Created: PROJ-f3
+✓ PROJ-abc is now blocked by PROJ-f3
 
-# Step 6: Add blocking dependencies
-$ bd dep add PROJ-abc PROJ-f1
-$ bd dep add PROJ-abc PROJ-f2
-$ bd dep add PROJ-abc PROJ-f3
-
-# Step 7: (Optional) Add parent relationships for context
-$ bd update PROJ-f1 --parent PROJ-abc
-$ bd update PROJ-f2 --parent PROJ-abc
-$ bd update PROJ-f3 --parent PROJ-abc
-
-# Result: Original task keeps ready-for-review label but is blocked
-# Fix tickets appear in bd ready for implementation
+# Result:
+# - Original task blocked until fixes complete
+# - Fix tickets are children of PROJ-abc
+# - Next review will show cluster: PROJ-abc + PROJ-f1 + PROJ-f2 + PROJ-f3
 ```
 
 ### **Scenario 2: Verification After Fixes**
