@@ -32,8 +32,25 @@ rescue JSON::ParserError => e
   exit 1
 end
 
-# Check for task ID argument
-target_id = ARGV[0]
+# Parse command line arguments
+require 'optparse'
+
+options = { validate: false }
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: #{$PROGRAM_NAME} [task-id] [options]"
+  opts.on("--validate", "Run validation before marking ready for review") do
+    options[:validate] = true
+  end
+  opts.on("-h", "--help", "Show this help message") do
+    puts opts
+    exit 0
+  end
+end
+
+# Separate task ID from flags
+args = ARGV.dup
+parser.parse!(args)
+target_id = args[0]
 
 # Find in-progress tasks
 output = run_bd("list --status in_progress --json")
@@ -66,6 +83,35 @@ unless task
     puts "  - #{t['id']}: #{t['title']}"
   end
   exit 1
+end
+
+# Run validation if requested
+if options[:validate]
+  puts ""
+  puts "Running validation on #{target_id}..."
+  puts "─" * 60
+
+  script_dir = File.join('.agent', 'skills', 'task-implementer', 'scripts')
+  validate_script = File.join(script_dir, 'validate_task.rb')
+
+  unless File.exist?(validate_script)
+    puts "Warning: validate_task.rb not found at #{validate_script}"
+    puts "Skipping validation..."
+  else
+    # Run validation script
+    system("ruby #{validate_script} #{target_id}")
+    validation_exit_code = $?.exitstatus
+
+    if validation_exit_code != 0
+      puts ""
+      puts "❌ Validation failed. Please fix the issues before marking ready for review."
+      puts "   Run 'bd show #{target_id}' to view task description."
+      puts "   Run 'bd update #{target_id} --description=\"...\"' to fix."
+      exit 1
+    end
+  end
+
+  puts ""
 end
 
 # Mark task as ready for review by:

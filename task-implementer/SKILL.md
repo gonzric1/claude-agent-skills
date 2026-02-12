@@ -103,6 +103,20 @@ ruby [[ @scripts/complete_task.rb ]] <optional_task_id>
 ```
 *Note: If only one task is in progress, the task ID is optional.*
 
+**Optional Validation:**
+To validate that task descriptions contain factually accurate information (commit hashes exist, files are correct, etc.):
+```bash
+ruby [[ @scripts/complete_task.rb ]] <optional_task_id> --validate
+```
+
+This validation checks:
+- Referenced commits exist in git history
+- Mentioned files exist in the codebase
+- Code patterns are present
+- Commits changed the files mentioned
+
+See `[[ @assets/validation-checklist.md ]]` for full validation criteria.
+
 This adds the `ready-for-review` label to the task. The `fs-task-reviewer` skill will pick it up for code review.
 
 ## Priority Levels
@@ -175,4 +189,72 @@ bd dep add <blocked-task> <blocker-task>
 
 # Close a task (use script to clean up dependencies)
 ruby .agent/skills/task-implementer/scripts/close_task.rb <task-id>
+
+# Validate task description for factual accuracy
+ruby .agent/skills/task-implementer/scripts/validate_task.rb <task-id>
+```
+
+## Task Validation
+
+The validation system helps prevent tasks from being created with factually incorrect information (e.g., claiming a commit contains changes it doesn't have).
+
+### Validation Script
+
+Run standalone validation:
+```bash
+ruby .agent/skills/task-implementer/scripts/validate_task.rb <task-id>
+```
+
+This checks:
+1. **Git commits** - Verifies referenced commits exist in git history
+2. **File paths** - Checks mentioned files exist in the codebase
+3. **Code patterns** - Searches for claimed code patterns
+4. **Cross-references** - Validates commits changed the mentioned files
+
+### Integrated Validation
+
+Run validation automatically before marking tasks ready for review:
+```bash
+ruby .agent/skills/task-implementer/scripts/complete_task.rb --validate
+```
+
+If validation fails, the task will not be marked ready for review.
+
+### Validation Checklist
+
+See `[[ @assets/validation-checklist.md ]]` for:
+- Detailed validation criteria
+- Manual verification steps
+- Common mistakes to avoid
+- Best practices for task descriptions
+- Examples of good vs. bad task descriptions
+
+### When to Use Validation
+
+**Always validate when:**
+- Task description references specific commits
+- Task claims code changes were made in specific files
+- Task closes another task as "already completed"
+- Task description contains technical claims about implementation
+
+**Optional for:**
+- Simple bug fixes with no commit references
+- Tasks created during implementation (not after the fact)
+- Documentation-only tasks
+
+### Example Validation Output
+
+**Passing validation:**
+```
+✓ Commit 58d9104 exists
+✓ File exists: app/javascript/types/index.ts
+✓ Pattern found: Record<string, string>
+✓ VALIDATION PASSED
+```
+
+**Failing validation:**
+```
+✗ Commit efea1b1 NOT FOUND in git history
+✗ VALIDATION FAILED
+  Action required: Update task description to correct factual errors.
 ```
