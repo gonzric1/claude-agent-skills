@@ -107,13 +107,30 @@ This adds the `ready-for-review` label to the task. The `fs-task-reviewer` skill
 
 ## Priority Levels
 
-| Priority | Label | Description |
-|----------|-------|-------------|
-| P0 | `critical` | Security, data loss, critical bugs |
-| P1 | `major` | SOLID violations, missing tests for core logic |
-| P2 | `moderate` | Maintainability issues, complex methods |
-| P3 | `ticket` | Standard feature work |
-| P4 | `nit` | Style, naming, minor refactors |
+| Priority | Label | Description | Blocking |
+|----------|-------|-------------|----------|
+| P0 | `critical` | Security, data loss, critical bugs | Yes |
+| P1 | `major` | SOLID violations, missing tests for core logic | Yes |
+| P2 | `moderate` | Maintainability issues, complex methods | Yes |
+| P3 | `ticket` | Standard feature work | No (`polish`) |
+| P4 | `nit` | Style, naming, minor refactors | No (`polish`) |
+
+### Polish Tasks
+
+Tasks labeled `polish` are low-priority (P3-P4) follow-up work created during code review. They are:
+- **Non-blocking**: Don't hold up parent task approval
+- **Deferred by default**: `start_next_task.rb` skips them when feature work exists
+- **Automatic fallback**: Picked up when no other work is available
+
+**To explicitly work on polish tasks:**
+```bash
+ruby [[ @scripts/start_next_task.rb ]] --polish
+```
+
+**To list all polish tasks:**
+```bash
+bd list --label polish
+```
 
 ### 4. Closing Fix Tickets
 

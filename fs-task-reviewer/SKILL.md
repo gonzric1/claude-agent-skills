@@ -156,11 +156,15 @@ ruby [[ @scripts/create_fix_ticket.rb ]] <reviewed-task-id> \
 * `test` - Missing or inadequate test coverage
 
 **Priority mapping:**
-* **P0 (0)**: Critical (Security, Data Loss, No Tests for Core Logic)
-* **P1 (1)**: Major (SOLID violations, missing YARD/TSDoc on public APIs, missing `.agent/context/` docs for new features/integrations)
-* **P2 (2)**: Moderate (Maintainability issues, complex methods, incomplete context docs)
-* **P3 (3)**: Standard (General improvements)
-* **P4 (4)**: Nit (Style, naming, or minor refactors)
+* **P0 (0)**: Critical (Security, Data Loss, No Tests for Core Logic) → **BLOCKING**
+* **P1 (1)**: Major (SOLID violations, missing YARD/TSDoc on public APIs, missing `.agent/context/` docs for new features/integrations) → **BLOCKING**
+* **P2 (2)**: Moderate (Maintainability issues, complex methods, incomplete context docs) → **BLOCKING**
+* **P3 (3)**: Standard (General improvements) → **NON-BLOCKING** (labeled `polish`)
+* **P4 (4)**: Nit (Style, naming, or minor refactors) → **NON-BLOCKING** (labeled `polish`)
+
+**Blocking vs Non-Blocking:**
+- **P0-P2 (Blocking)**: Parent task cannot be approved until these are fixed
+- **P3-P4 (Non-blocking)**: Labeled `polish`, parent can proceed. Complete during downtime or when no feature work exists. Filter with: `bd list --label polish`
 
 ### **4. Review Decision**
 
@@ -318,8 +322,9 @@ $ ruby scripts/approve_task.rb PROJ-abc
 ### Workflow Labels
 - `ready-for-review` - Task has been implemented and awaits code review (stays even when blocked)
 - `review-passed` - Approved and closed
+- `polish` - Low-priority (P3-P4) follow-up work; do during downtime when no feature work exists
 
-**Note:** Review-generated tickets use normal issue types (bug, task, documentation) with blocking dependencies. No special review labels needed.
+**Note:** Review-generated tickets use normal issue types (bug, task, documentation). P0-P2 create blocking dependencies; P3-P4 are non-blocking and labeled `polish`.
 
 ### Priority Labels
 - `critical` - P0 issues

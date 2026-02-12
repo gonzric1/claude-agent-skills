@@ -168,14 +168,26 @@ puts "  Title: #{options[:title]}"
 puts "  Type: #{options[:type]}"
 puts "  Priority: P#{options[:priority]}"
 
-# Add blocking dependency (parent is blocked by new ticket)
-puts ""
-puts "Adding blocking dependency..."
-dep_result = run_bd("dep add #{parent_id} #{new_id}", allow_failure: true)
-if dep_result
-  puts "✓ #{parent_id} is now blocked by #{new_id}"
+# Determine if this should be a blocking dependency based on priority
+# P0-P2 (Critical/Major/Moderate): BLOCKING - must be fixed before approval
+# P3-P4 (Standard/Nit): NON-BLOCKING - follow-up "polish" work
+is_blocking = options[:priority] <= 2
+
+if is_blocking
+  puts ""
+  puts "Adding blocking dependency (P#{options[:priority]} requires fix before approval)..."
+  dep_result = run_bd("dep add #{parent_id} #{new_id}", allow_failure: true)
+  if dep_result
+    puts "✓ #{parent_id} is now blocked by #{new_id}"
+  else
+    puts "Warning: Could not add blocking dependency"
+  end
 else
-  puts "Warning: Could not add blocking dependency"
+  puts ""
+  puts "Skipping blocking dependency (P#{options[:priority]} is follow-up polish work)"
+  puts "  Adding 'polish' label for low-priority follow-up tracking..."
+  run_bd("update #{new_id} --add-label polish", allow_failure: true)
+  puts "✓ #{new_id} labeled as 'polish' (do when idle)"
 end
 
 # Now set parent relationship (after dependency is established)
@@ -192,5 +204,11 @@ end
 run_bd("sync", allow_failure: true)
 
 puts ""
-puts "Fix ticket created and linked. The parent task (#{parent_id}) will"
-puts "remain blocked until this fix ticket is closed."
+if is_blocking
+  puts "Fix ticket created and linked. The parent task (#{parent_id}) will"
+  puts "remain blocked until this fix ticket is closed."
+else
+  puts "Polish ticket created. The parent task (#{parent_id}) can proceed"
+  puts "without waiting for this ticket. Complete during downtime or when"
+  puts "no feature work is available (filter with: bd list --label polish)."
+end

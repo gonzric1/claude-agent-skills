@@ -4,6 +4,9 @@
 require 'json'
 require 'open3'
 
+# Parse command line flags
+POLISH_MODE = ARGV.include?('--polish') || ARGV.include?('-p')
+
 # Helper to run bd commands and parse JSON output
 def run_bd(args)
   cmd = "bd #{args}"
@@ -70,6 +73,34 @@ all_tasks = parse_json(output)
 tasks = all_tasks.reject do |task|
   labels = task['labels'] || []
   labels.include?('ready-for-review')
+end
+
+# Separate polish tasks (low-priority P3-P4 follow-up work)
+# These are done last, only when no other feature work exists
+polish_tasks = tasks.select { |task| (task['labels'] || []).include?('polish') }
+feature_tasks = tasks.reject { |task| (task['labels'] || []).include?('polish') }
+
+# --polish flag: explicitly work on polish tasks
+if POLISH_MODE
+  if polish_tasks.any?
+    tasks = polish_tasks
+    puts "=" * 60
+    puts "POLISH MODE (--polish): Prioritizing polish tasks"
+    puts "=" * 60
+    puts ""
+  else
+    puts "No polish tasks available. Falling back to feature work."
+  end
+# Default: prefer feature work; fall back to polish only when idle
+elsif feature_tasks.any?
+  tasks = feature_tasks
+  puts "Note: #{polish_tasks.length} polish task(s) deferred (run with --polish to prioritize)" if polish_tasks.any?
+elsif polish_tasks.any?
+  tasks = polish_tasks
+  puts "=" * 60
+  puts "POLISH MODE: No feature work available - picking polish tasks"
+  puts "=" * 60
+  puts ""
 end
 
 if tasks.empty?
