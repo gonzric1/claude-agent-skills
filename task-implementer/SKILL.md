@@ -103,19 +103,57 @@ ruby [[ @scripts/complete_task.rb ]] <optional_task_id>
 ```
 *Note: If only one task is in progress, the task ID is optional.*
 
-**Optional Validation:**
-To validate that task descriptions contain factually accurate information (commit hashes exist, files are correct, etc.):
+#### Automatic Validation
+
+**NEW**: Validation is now **automatic** when task descriptions contain commit references.
+
+The `complete_task.rb` script automatically:
+1. Detects commit hashes in task description (7+ hex characters matching `/\b[0-9a-f]{7,40}\b/i`)
+2. Runs `validate_task.rb` before marking ready-for-review
+3. Blocks task completion if validation fails
+
+**Override flags:**
 ```bash
-ruby [[ @scripts/complete_task.rb ]] <optional_task_id> --validate
+# Force validation even without commit hashes
+ruby [[ @scripts/complete_task.rb ]] <task_id> --validate
+
+# Skip automatic validation (for edge cases)
+ruby [[ @scripts/complete_task.rb ]] <task_id> --skip-validation
 ```
 
-This validation checks:
-- Referenced commits exist in git history
-- Mentioned files exist in the codebase
-- Code patterns are present
-- Commits changed the files mentioned
+**Why validation matters:**
+- Prevents false commit claims (e.g., claiming commit X contains changes it doesn't have)
+- Catches user errors where uncommitted changes are mistaken for committed work
+- Ensures task descriptions are factually accurate for future reference
+- See `.agent/context/workflow/task-validation-incident-2026-02-12.md` for real incident example
 
-See `[[ @assets/validation-checklist.md ]]` for full validation criteria.
+**What validation checks:**
+- ✓ Referenced commits exist in git history
+- ✓ Mentioned files exist in the codebase
+- ✓ Claimed code patterns are present in specified commits
+- ✓ Commits actually changed the files mentioned in the task
+
+**Automatic validation triggers when:**
+- ✅ Task description contains commit hashes (e.g., `abc1234`, `58d9104ef`)
+- ✅ Task claims code changes were made in specific files
+- ✅ Task references specific commits in its description
+
+**Example:**
+```bash
+# Task claims work was completed in commit abc1234
+$ ruby [[ @scripts/complete_task.rb ]] PrintMines-xyz --validate
+
+✓ Commit abc1234 exists
+✓ File exists: app/javascript/types/index.ts
+✓ Pattern found: Record<string, string>
+✓ Commit abc1234 changed app/javascript/types/index.ts
+✓ VALIDATION PASSED
+Task PrintMines-xyz marked ready-for-review
+```
+
+If validation fails, the task will NOT be marked ready for review. Fix the task description to be factually accurate before retrying.
+
+See `[[ @assets/validation-checklist.md ]]` for full validation criteria and manual verification steps.
 
 This adds the `ready-for-review` label to the task. The `fs-task-reviewer` skill will pick it up for code review.
 

@@ -32,14 +32,23 @@ rescue JSON::ParserError => e
   exit 1
 end
 
+# Helper to detect commit hashes in text
+def contains_commit_hashes?(text)
+  # Match 7-40 character hex strings (git commit hashes)
+  text.match?(/\b[0-9a-f]{7,40}\b/i)
+end
+
 # Parse command line arguments
 require 'optparse'
 
-options = { validate: false }
+options = { validate: nil, skip_validation: false }
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: #{$PROGRAM_NAME} [task-id] [options]"
-  opts.on("--validate", "Run validation before marking ready for review") do
+  opts.on("--validate", "Force validation before marking ready for review") do
     options[:validate] = true
+  end
+  opts.on("--skip-validation", "Skip automatic validation (for edge cases)") do
+    options[:skip_validation] = true
   end
   opts.on("-h", "--help", "Show this help message") do
     puts opts
@@ -85,8 +94,30 @@ unless task
   exit 1
 end
 
-# Run validation if requested
-if options[:validate]
+# Determine if validation should run
+should_validate = false
+
+if options[:skip_validation]
+  # Explicit skip - don't validate
+  should_validate = false
+elsif options[:validate] == true
+  # Explicit --validate flag - always validate
+  should_validate = true
+else
+  # Auto-detect: check if task description contains commit hashes
+  task_output = run_bd("show #{target_id}")
+  description = task_output[/DESCRIPTION\n(.*?)(?=\n[A-Z]+\n|\z)/m, 1]
+
+  if description && contains_commit_hashes?(description)
+    puts ""
+    puts "🔍 Commit references detected in task description."
+    puts "   Running automatic validation..."
+    should_validate = true
+  end
+end
+
+# Run validation if needed
+if should_validate
   puts ""
   puts "Running validation on #{target_id}..."
   puts "─" * 60
@@ -107,6 +138,8 @@ if options[:validate]
       puts "❌ Validation failed. Please fix the issues before marking ready for review."
       puts "   Run 'bd show #{target_id}' to view task description."
       puts "   Run 'bd update #{target_id} --description=\"...\"' to fix."
+      puts ""
+      puts "   To skip validation for edge cases, use: --skip-validation"
       exit 1
     end
   end
