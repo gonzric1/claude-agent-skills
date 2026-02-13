@@ -200,6 +200,15 @@ else
   puts "Note: Parent relationship not set (dependency still works)"
 end
 
+# Auto-label documentation tasks
+doc_keywords = ['YARD', 'TSDoc', 'JSDoc', 'documentation', 'document', '@see', '@param', '@return', '@example', 'Add docs', 'Update docs']
+if doc_keywords.any? { |keyword| options[:title].match?(/#{Regexp.escape(keyword)}/i) }
+  puts ""
+  puts "Auto-labeling as documentation task..."
+  run_bd("update #{new_id} --add-label documentation", allow_failure: true)
+  puts "✓ #{new_id} labeled as 'documentation'"
+end
+
 # Sync to persist changes
 run_bd("sync", allow_failure: true)
 
