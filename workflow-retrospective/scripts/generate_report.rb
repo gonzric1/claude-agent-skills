@@ -17,6 +17,7 @@
 require 'json'
 require 'optparse'
 require 'date'
+require 'time'
 
 # Parse command line arguments
 options = {
@@ -48,35 +49,43 @@ end
 
 parser.parse!
 
-unless options[:input_file]
-  puts "Error: --input is required"
-  puts ""
-  puts "Usage: #{$PROGRAM_NAME} --input metrics.json [--output report.md] [--format executive]"
-  exit 1
+# Helper: Format recommendations
+def format_recommendations(recommendations)
+  return "No recommendations at this time." if recommendations.empty?
+
+  recommendations.map.with_index do |rec, index|
+    priority_label = case rec['priority']
+    when 0 then "[P0 - CRITICAL]"
+    when 1 then "[P1 - MAJOR]"
+    when 2 then "[P2 - MODERATE]"
+    else "[P#{rec['priority']}]"
+    end
+
+    <<~REC
+      ### #{index + 1}. #{priority_label} #{rec['title']}
+
+      **Problem**: #{rec['description']}
+
+      **Action**: #{rec['action']}
+
+      **Expected Impact**: #{rec['impact']}
+    REC
+  end.join("\n")
 end
 
-# Load metrics
-metrics = JSON.parse(File.read(options[:input_file]))
-
-# Generate report based on format
-report = case options[:format]
-when 'executive'
-  generate_executive_summary(metrics)
-when 'summary'
-  generate_summary_report(metrics)
-when 'detailed'
-  generate_detailed_report(metrics)
-else
-  puts "Unknown format: #{options[:format]}"
-  exit 1
+# Helper: Status emoji for ranges
+def status_emoji(value, min, max)
+  value >= min && value <= max ? '✅' : '⚠️'
 end
 
-# Output report
-if options[:output_file]
-  File.write(options[:output_file], report)
-  puts "Report generated: #{options[:output_file]}"
-else
-  puts report
+# Helper: Status emoji for less than
+def status_emoji_less_than(value, threshold)
+  value < threshold ? '✅' : '⚠️'
+end
+
+# Helper: Status emoji for greater than
+def status_emoji_greater_than(value, threshold)
+  value > threshold ? '✅' : '⚠️'
 end
 
 # Executive Summary Format
@@ -195,41 +204,34 @@ def generate_detailed_report(metrics)
   MARKDOWN
 end
 
-# Helper: Format recommendations
-def format_recommendations(recommendations)
-  return "No recommendations at this time." if recommendations.empty?
-
-  recommendations.map.with_index do |rec, index|
-    priority_label = case rec['priority']
-    when 0 then "[P0 - CRITICAL]"
-    when 1 then "[P1 - MAJOR]"
-    when 2 then "[P2 - MODERATE]"
-    else "[P#{rec['priority']}]"
-    end
-
-    <<~REC
-      ### #{index + 1}. #{priority_label} #{rec['title']}
-
-      **Problem**: #{rec['description']}
-
-      **Action**: #{rec['action']}
-
-      **Expected Impact**: #{rec['impact']}
-    REC
-  end.join("\n")
+# Main execution
+unless options[:input_file]
+  puts "Error: --input is required"
+  puts ""
+  puts "Usage: #{$PROGRAM_NAME} --input metrics.json [--output report.md] [--format executive]"
+  exit 1
 end
 
-# Helper: Status emoji for ranges
-def status_emoji(value, min, max)
-  value >= min && value <= max ? '✅' : '⚠️'
+# Load metrics
+metrics = JSON.parse(File.read(options[:input_file]))
+
+# Generate report based on format
+report = case options[:format]
+when 'executive'
+  generate_executive_summary(metrics)
+when 'summary'
+  generate_summary_report(metrics)
+when 'detailed'
+  generate_detailed_report(metrics)
+else
+  puts "Unknown format: #{options[:format]}"
+  exit 1
 end
 
-# Helper: Status emoji for less than
-def status_emoji_less_than(value, threshold)
-  value < threshold ? '✅' : '⚠️'
-end
-
-# Helper: Status emoji for greater than
-def status_emoji_greater_than(value, threshold)
-  value > threshold ? '✅' : '⚠️'
+# Output report
+if options[:output_file]
+  File.write(options[:output_file], report)
+  puts "Report generated: #{options[:output_file]}"
+else
+  puts report
 end
