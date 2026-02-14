@@ -64,6 +64,29 @@ This removes dependencies pointing to closed/deleted issues.
 - Usually caused by invalid dependencies (see above)
 - After fixing dependencies, this should resolve automatically
 
+## Understanding the Ready Queue
+
+**IMPORTANT**: Tasks with `ready-for-review` labels ARE expected to appear in `bd ready`.
+
+### How Agents Filter Work
+
+Both `task-implementer` and `fs-task-reviewer` use `bd ready` as their starting point:
+
+**task-implementer workflow:**
+1. Gets all tasks from `bd ready --json`
+2. **Filters OUT** tasks with `ready-for-review` label (client-side)
+3. Works on remaining implementation tasks
+
+**fs-task-reviewer workflow:**
+1. Gets tasks with `bd list --status open --label ready-for-review --json`
+2. These tasks also appear in `bd ready` (open + no blockers)
+3. Works on review tasks
+
+**Why this design:**
+- `bd ready` is the single source of truth for "unblocked work"
+- Agents apply their own filters to find their specific work type
+- Tasks waiting for review are technically "ready" (ready for review, not implementation)
+
 ## Workflow Invariants Checked
 
 The diagnostic verifies:
@@ -71,8 +94,9 @@ The diagnostic verifies:
 1. ✅ **Label Conflicts**: No incompatible label combinations
 2. ✅ **Orphaned Parents**: Review issues only reference open parent issues
 3. ✅ **Stuck Issues**: No issues in_progress for >24h without updates
-4. ❌ **Valid Dependencies**: Dependencies only point to open issues
-5. ❌ **Ready Queue Consistency**: All ready issues appear in `bd ready`
+4. ✅ **Stuck Review Claims**: No review claims in_progress for >24h
+5. ❌ **Valid Dependencies**: Dependencies only point to open issues
+6. ❌ **Ready Queue Consistency**: All unblocked issues appear in `bd ready`
 
 ## Fix Scripts
 

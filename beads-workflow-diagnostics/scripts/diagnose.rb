@@ -24,6 +24,7 @@ class BeadsWorkflowDiagnostic
   WORKFLOW_LABELS = %w[
     ready-for-review
     review-passed
+    polish
   ].freeze
 
   PRIORITY_LABELS = %w[
@@ -67,9 +68,11 @@ class BeadsWorkflowDiagnostic
   ].freeze
 
   STUCK_THRESHOLD_HOURS = 24
+  REVIEW_CLAIM_TIMEOUT_HOURS = 24
 
   def initialize
     @issues = []
+    @all_issues = []  # Includes in_progress issues
     @problems = []
     @warnings = []
   end
@@ -84,6 +87,7 @@ class BeadsWorkflowDiagnostic
     check_invalid_labels
     check_orphaned_parents
     check_stuck_issues
+    check_stuck_review_claims
     check_dependencies
     check_ready_queue_consistency
 
@@ -103,12 +107,12 @@ class BeadsWorkflowDiagnostic
     end
 
     # Parse JSONL (one JSON object per line)
-    all_issues = output.lines.map { |line| JSON.parse(line.strip) }
+    @all_issues = output.lines.map { |line| JSON.parse(line.strip) }
 
-    # Filter to open issues only
-    @issues = all_issues.select { |i| i['status'] == 'open' }
+    # Filter to open issues only for most checks
+    @issues = @all_issues.select { |i| i['status'] == 'open' }
 
-    puts "✓ (#{@issues.size} open issues)"
+    puts "✓ (#{@issues.size} open, #{@all_issues.size} total)"
   rescue JSON::ParserError => e
     puts "❌ Failed to parse bd export output: #{e.message}"
     exit 2
@@ -268,8 +272,51 @@ class BeadsWorkflowDiagnostic
     end
   end
 
+  def check_stuck_review_claims
+    puts "\n5️⃣  Checking for stuck review claims..."
+    stuck_reviews = []
+    now = Time.now
+
+    # Check ALL issues (including in_progress) for stuck review claims
+    @all_issues.each do |issue|
+      next unless issue['status'] == 'in_progress'
+
+      labels = issue['labels'] || []
+      next unless labels.include?('ready-for-review')
+
+      updated_at = parse_time(issue['updated_at'])
+      next unless updated_at
+
+      hours_stuck = ((now - updated_at) / 3600).round(1)
+
+      if hours_stuck > REVIEW_CLAIM_TIMEOUT_HOURS
+        stuck_reviews << {
+          id: issue['id'],
+          title: issue['title'],
+          hours: hours_stuck,
+          assignee: issue['assignee'] || 'unassigned'
+        }
+      end
+    end
+
+    if stuck_reviews.any?
+      @problems << "Stuck review claims (#{stuck_reviews.size})"
+      puts "   ❌ Tasks claimed by reviewers but never completed:"
+      stuck_reviews.each do |item|
+        puts "      #{item[:id]}: Claimed #{item[:hours]}h ago"
+        puts "         Title: #{item[:title]}"
+        puts "         Assignee: #{item[:assignee]}"
+      end
+      puts ""
+      puts "   💡 These tasks are stuck in 'being reviewed' state."
+      puts "      Run: ruby scripts/fix_stuck_reviews.rb"
+    else
+      puts "   ✓ No stuck review claims"
+    end
+  end
+
   def check_dependencies
-    puts "\n5️⃣  Checking dependency graph..."
+    puts "\n6️⃣  Checking dependency graph..."
 
     # Build dependency graph from dependencies array
     graph = {}
@@ -292,13 +339,18 @@ class BeadsWorkflowDiagnostic
     end
 
     # Check for invalid blockers (references to non-existent issues)
+    # We need to check ALL issues (not just open), because in_progress blockers are valid
+    all_output, = run_command('bd export')
+    all_issues = all_output.lines.map { |line| JSON.parse(line.strip) }
+    all_issue_ids = all_issues.map { |i| i['id'] }
+
     invalid = []
     @issues.each do |issue|
       deps = issue['dependencies'] || []
       blocked_by = deps.select { |d| d['issue_id'] == issue['id'] }.map { |d| d['depends_on_id'] }
 
       blocked_by.each do |blocker_id|
-        unless @issues.any? { |i| i['id'] == blocker_id }
+        unless all_issue_ids.include?(blocker_id)
           invalid << {
             id: issue['id'],
             title: issue['title'],
@@ -320,7 +372,7 @@ class BeadsWorkflowDiagnostic
   end
 
   def check_ready_queue_consistency
-    puts "\n6️⃣  Checking bd ready queue consistency..."
+    puts "\n7️⃣  Checking bd ready queue consistency..."
 
     # Parse bd ready output (it's plain text, not JSON)
     ready_output, = run_command('bd ready')
@@ -334,6 +386,9 @@ class BeadsWorkflowDiagnostic
 
     # Calculate which issues SHOULD be ready
     # Extract blockers from dependencies array
+    # NOTE: ready-for-review tasks ARE expected to appear in bd ready.
+    # task-implementer filters them out client-side, but they need to be
+    # visible in bd ready so fs-task-reviewer can find them via bd list filters.
     should_be_ready = @issues.select do |issue|
       status_ok = issue['status'] == 'open'
 
@@ -343,10 +398,8 @@ class BeadsWorkflowDiagnostic
       no_blockers = blocked_by_deps.empty?
 
       no_assignee = issue['assignee'].nil? || issue['assignee'].empty?
-      labels = issue['labels'] || []
-      not_ready_for_review = !labels.include?('ready-for-review')
 
-      status_ok && no_blockers && no_assignee && not_ready_for_review
+      status_ok && no_blockers && no_assignee
     end
 
     # Find discrepancies
