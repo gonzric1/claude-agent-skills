@@ -133,10 +133,18 @@ This will:
 ### **2. The Audit Phase**
 
 * **Static Analysis**: Execute scripts/review-suite.sh to gather linting, security, and coverage data.
+  - **Ruby**: RuboCop (style), Brakeman (security), Minitest with SimpleCov (coverage)
+  - **Frontend**: ESLint (style), TypeScript compiler (types), Vitest with v8 coverage
+  - **Coverage Thresholds**: Backend: 80% line, 75% branch | Frontend: 80% line/function/statement, 75% branch
+  - **Automated Coverage Checks**: The script now runs tests with coverage and validates thresholds automatically
 * **Manual Review**: Analyze the code and tests for logic errors, edge cases, and adherence to SOLID.
 * **Code Documentation**: Ensure YARD (Ruby) or TSDoc (TS) is present and updated on public APIs.
 * **Context Documentation**: Check if `.agent/context/` docs were updated for new features, integrations, or architectural patterns.
 * **Grounding**: Cross-reference .agent/context/ to ensure the implementation matches the intended design.
+
+**Note on Coverage**: The review suite now actively runs tests with coverage reporting. If coverage is below thresholds, the script will fail and report specific metrics. Review the coverage HTML reports for detailed analysis:
+- Ruby: `coverage/index.html`
+- Frontend: `coverage/index.html`
 
 ### **3. The Triage Phase**
 
@@ -163,6 +171,8 @@ ruby [[ @scripts/create_fix_ticket.rb ]] <reviewed-task-id> \
 * `test` - Missing or inadequate test coverage
 
 **Priority mapping:**
+
+**🚨 CRITICAL: Read the "Documentation Priority Decision Tree" below BEFORE assigning documentation priorities!**
 
 * **P0 (0)**: Critical (Blocks Build/Deploy) → **BLOCKING**
   - Security vulnerabilities (SQL injection, XSS, secrets in code)
@@ -205,11 +215,24 @@ ruby [[ @scripts/create_fix_ticket.rb ]] <reviewed-task-id> \
 - **P0-P2 (Blocking)**: Parent task cannot be approved until these are fixed
 - **P3-P4 (Non-blocking)**: Labeled `polish`, parent can proceed. Complete during downtime or when no feature work exists. Filter with: `bd list --label polish`
 
+**🎯 Target Distribution:**
+- **P0-P2 (Blocking)**: 40-60% of findings
+- **P3-P4 (Polish)**: 40-60% of findings
+- **Documentation**: < 25% of all findings
+
+**If your review has >70% blocking findings or >40% documentation findings, you are being too aggressive. Re-evaluate using the decision tree below.**
+
 **Key Principle - NEW vs EXISTING:**
 - **NEW code** (added in this review): Missing docs → P1-P2 (blocking)
 - **EXISTING code** (already there): Missing docs → P3-P4 (polish)
 
 ## Documentation Priority Decision Tree
+
+**🚨 MANDATORY: Follow this decision tree for EVERY documentation finding.**
+
+**Most common mistake**: Treating all missing documentation as P1 regardless of whether code is NEW or EXISTING.
+
+**Rule**: Default to P3 for documentation unless the decision tree explicitly says otherwise.
 
 When evaluating missing documentation, ask these questions in order:
 
@@ -218,16 +241,21 @@ When evaluating missing documentation, ask these questions in order:
    - YES → continue
 
 **2. Was this code ADDED in the task being reviewed?**
-   - NO (existing code) → **P3** (polish work)
+   - NO (existing code) → **P3** (polish work) ← **STOP HERE, assign P3**
    - YES → continue
 
 **3. Is this a PUBLIC API or internal implementation detail?**
-   - Internal helper/private method → **P3** (polish work)
+   - Internal helper/private method → **P3** (polish work) ← **STOP HERE, assign P3**
    - Public API → continue
 
 **4. Is it a critical integration or new feature?**
    - YES (new Etsy integration, payment processing, etc.) → **P1**
    - NO (minor feature addition) → **P2**
+
+**Before creating a documentation finding, ask:**
+- [ ] Is this code NEW (added in this PR)? If NO → P3
+- [ ] Is this a PUBLIC API? If NO → P3
+- [ ] Is this critical infrastructure? If NO → P2
 
 **Examples:**
 
